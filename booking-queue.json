@@ -19,7 +19,9 @@
         "end": "10:00"
       },
       "status": "pending"
-    },
+    }
+  ],
+  "processedRequests": [
     {
       "id": "2025-05-21-36198",
       "requestDate": "2025-05-21T12:32:00.239Z",
@@ -28,8 +30,9 @@
         "start": "15:00",
         "end": "17:00"
       },
-      "status": "pending"
+      "status": "success",
+      "processedDate": "2025-05-21T12:36:54.277Z",
+      "bookedTime": "16:00"
     }
-  ],
-  "processedRequests": []
+  ]
 }
