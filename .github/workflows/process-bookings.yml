@@ -117,7 +117,7 @@ jobs:
 
       - name: Send Images to Discord
         if: ${{ env.DISCORD_WEBHOOK_AVAILABLE && steps.list_screenshots.outputs.files_list != '' }}
-        uses: MineBartekSA/discord-webhook@v2.1.0
+        uses: MineBartekSA/discord-webhook@v2
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK_URL }}
           content: "Job finished! Here are the screenshots from the booking process:"
