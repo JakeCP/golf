@@ -97,28 +97,55 @@ jobs:
         id: list_screenshots
         if: ${{ env.TAKE_SCREENSHOTS != 'false' }}
         run: |
-          # This script finds *.png files in logs/ and creates a comma-separated list.
-          # It handles cases where no png files are found or the logs/ directory doesn't exist.
+          # This script finds *.png files in logs/ and creates a YAML-formatted list
+          # that the Discord webhook action can understand.
+          echo "Current working directory: $(pwd)"
+          echo "Listing contents of logs directory:"
+          ls -la logs/
+          
           shopt -s nullglob # Ensures that if no files match, the array is empty
           files_array=(logs/*.png)
           shopt -u nullglob # Reset nullglob
 
+          echo "Found ${#files_array[@]} PNG files"
+          
           if [ ${#files_array[@]} -eq 0 ]; then
             echo "No screenshots found to send to Discord."
             echo "files_list=" >> $GITHUB_OUTPUT
           else
-            # Join array elements with comma
-            joined_files=$(printf ",%s" "${files_array[@]}")
-            joined_files=${joined_files:1} # Remove leading comma
-            echo "Screenshots to send: $joined_files"
-            echo "files_list=$joined_files" >> $GITHUB_OUTPUT
+            # Create YAML formatted attachment data
+            yaml_output=""
+            for file in "${files_array[@]}"; do
+              echo "Processing file: $file"
+              filename=$(basename "$file")
+              # Use relative path from workspace root
+              yaml_output+="- file: $file
+              filename: $filename
+            "
+            done
+            
+            echo "Generated YAML:"
+            echo "$yaml_output"
+            
+            echo "files_list<<EOF" >> $GITHUB_OUTPUT
+            echo "$yaml_output" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            echo "Screenshots prepared for Discord"
           fi
         shell: bash
 
       - name: Send Images to Discord
+        id: discord_webhook
         if: ${{ env.DISCORD_WEBHOOK_AVAILABLE && steps.list_screenshots.outputs.files_list != '' }}
+        continue-on-error: true  # Don't fail the workflow if Discord posting fails
         uses: MineBartekSA/discord-webhook@v2
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK_URL }}
           content: "Job finished! Here are the screenshots from the booking process:"
-          attachment: ${{ steps.list_screenshots.outputs.files_list }}
+          attachment: |
+            ${{ steps.list_screenshots.outputs.files_list }}
+            
+      - name: Discord webhook status
+        if: ${{ steps.discord_webhook.outcome == 'failure' }}
+        run: |
+          echo "::warning::Discord webhook failed to send screenshots. Check if files exist and webhook URL is correct."
