@@ -77,6 +77,19 @@ jobs:
           DATE_OVERRIDE: ${{ secrets.DATE_OVERRIDE }}
           TAKE_SCREENSHOTS: ${{ secrets.TAKE_SCREENSHOTS }}
       
+      - name: List screenshots
+        id: list_screenshots
+        continue-on-error: true
+        run: |
+          if compgen -G "logs/*.png" > /dev/null; then
+            files=$(printf "%s," logs/*.png)
+            files=${files%,}                     # trim trailing comma
+            echo "files_list=$files" >> "$GITHUB_OUTPUT"
+          else
+            echo "No screenshots found"
+            echo "files_list=" >> "$GITHUB_OUTPUT"
+          fi
+      
       - name: Upload screenshots
         uses: actions/upload-artifact@v4
         if: ${{ env.TAKE_SCREENSHOTS != 'false' }}
@@ -95,34 +108,29 @@ jobs:
       
       - name: Prepare attachments for Discord
         id: prepare_discord_attachments
+        continue-on-error: true
         if: steps.list_screenshots.outputs.files_list != ''
         run: |
-          files_list="${{ steps.list_screenshots.outputs.files_list }}"
+          IFS=',' read -ra files <<< "${{ steps.list_screenshots.outputs.files_list }}"
           attachments_yaml=""
-
-          OLD_IFS=$IFS
-          IFS=','
-          read -ra file_paths <<< "$files_list"
-          IFS=$OLD_IFS
-
-          for file_path in "${file_paths[@]}"; do
-            trimmed_path=$(echo "$file_path" | xargs)
-            filename=$(basename "$trimmed_path")
-            attachments_yaml+="  - file: ${trimmed_path}\n    filename: ${filename}\n"
+          for file_path in "${files[@]}"; do
+            file=$(echo "$file_path" | xargs)
+            attachments_yaml+="  - file: ${file}\n    filename: $(basename "$file")\n"
           done
+          {
+            echo "attachments_yaml<<'EOF'"
+            echo -e "$attachments_yaml"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
-          echo "ATTACHMENTS_YAML<<EOF" >> $GITHUB_OUTPUT
-          echo -e "${attachments_yaml}" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-        shell: bash
-
+      # finally post to Discord
       - name: Send Images to Discord
-        id: discord_webhook
-        if: steps.list_screenshots.outputs.files_list != '' && steps.prepare_discord_attachments.outputs.attachments_yaml != ''
-        continue-on-error: true  # Don't fail the workflow if Discord posting fails
         uses: MineBartekSA/discord-webhook@v2
+        id: discord_webhook
+        continue-on-error: true           # don’t fail the whole job if Discord is down
+        if: steps.prepare_discord_attachments.outputs.attachments_yaml != '' && env.DISCORD_WEBHOOK_AVAILABLE == 'true'
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK_URL }}
           content: "Job finished! Here are the screenshots from the booking process:"
           attachment: |
-            ${{ steps.prepare_discord_attachments.outputs.attachments_yaml }}            
+            ${{ steps.prepare_discord_attachments.outputs.attachments_yaml }}           
