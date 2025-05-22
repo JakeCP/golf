@@ -132,5 +132,9 @@ jobs:
         continue-on-error: true
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          content: "Job finished! Here are the screenshots from the booking process:"
+          content: |
+            **Booking run:** ${{ steps.process-queue.outputs.booking_status }}
+            Requests processed: ${{ steps.process-queue.outputs.processed_count }}
+            ---
+            ${{ steps.process-queue.outputs.results }}
           attachment: ${{ steps.prepare_discord_attachments.outputs.attachments_json }}

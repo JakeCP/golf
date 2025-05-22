@@ -42,6 +42,15 @@ const simulateBooking = process.env.SIMULATE_BOOKING === 'true';
 const takeScreenshots = process.env.TAKE_SCREENSHOTS !== 'false'; // Default to true unless explicitly disabled
 const headless = process.env.HEADLESS !== 'false'; // Default to true unless explicitly disabled
 
+const setOutput = (name: string, value: string) => {
+  const dest = process.env.GITHUB_OUTPUT;
+  if (dest) {
+    fs.appendFileSync(dest, `${name}<<EOF\n${value}\nEOF\n`);
+  } else {
+    console.log(`${name}=${value}`);         // still useful when you run locally
+  }
+};
+
 // Helper function to get today's date with optional override from environment variable
 const getTodayDate = (): string => {
   if (process.env.DATE_OVERRIDE) {
@@ -144,6 +153,9 @@ const logEmptyBooking = (queuePath: string): void => {
     processedRequests: []
   };
   fs.writeFileSync(queuePath, JSON.stringify(emptyQueue, null, 2));
+  setOutput('processed_count', "0");
+  setOutput('booking_status', 'failure');
+  setOutput('results', 'No booking requests in queue.');
   console.log('processed_count=0' + (process.env.GITHUB_OUTPUT ? ' >> $GITHUB_OUTPUT' : ''));
   console.log('results=No booking requests in queue.' + (process.env.GITHUB_OUTPUT ? ' >> $GITHUB_OUTPUT' : ''));
   return;
@@ -566,6 +578,9 @@ async function processQueue(): Promise<void> {
 
   if (todayRequests.length === 0) {
     log(`No booking requests for today (${getTodayDate()})`);
+    setOutput('processed_count', "0");
+    setOutput('booking_status', 'success');
+    setOutput('results', 'No booking requests for today.');
     console.log('processed_count=0' + (process.env.GITHUB_OUTPUT ? ' >> $GITHUB_OUTPUT' : ''));
     console.log('results=No booking requests for today.' + (process.env.GITHUB_OUTPUT ? ' >> $GITHUB_OUTPUT' : ''));
     return;
@@ -579,6 +594,9 @@ async function processQueue(): Promise<void> {
   log(`Processed ${processedCount} requests`);
   console.log(`processed_count=${processedCount}` + (process.env.GITHUB_OUTPUT ? ' >> $GITHUB_OUTPUT' : ''));
   console.log(`results=${results}` + (process.env.GITHUB_OUTPUT ? ' >> $GITHUB_OUTPUT' : ''));
+  setOutput('processed_count', processedCount.toString());
+  setOutput('booking_status', processedCount > 0 ? 'success' : 'failure');
+  setOutput('results', results);
   logStream.end();
 }
 
