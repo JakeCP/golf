@@ -244,7 +244,7 @@ async function processRealRequests(
   let results = '';
   let processedCount = 0;
   let browser: Browser | null = null;
-  const maxRetries = 1;
+  const maxRetries = 3;
   const retryDelay = 30000; // 10 seconds
 
   try {
@@ -476,7 +476,7 @@ const confirmBookingInFrame = async (bookingFrame: Frame, page: Page, requestId?
   await bookingFrame.getByText('ADD BUDDIES & GROUPS').click();
   await bookingFrame.getByText(/Test group \(\d+ people\)/i).click();
   // Click the book now button
-  //await bookingFrame.locator('a.btn.btn-primary:has-text("BOOK NOW")').click();
+  await bookingFrame.locator('a.btn.btn-primary:has-text("BOOK NOW")').click();
   await bookingFrame.waitForLoadState('networkidle');
   await bookingFrame.waitForTimeout(3000); // Wait for 3 seconds to allow data to load
   // Take a screenshot after booking to verify success (if enabled)
