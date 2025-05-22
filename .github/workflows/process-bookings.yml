@@ -106,6 +106,7 @@ jobs:
           commit_message: Update booking queue after processing
           file_pattern: booking-queue.json
 
+          # --- before the Send-to-Discord step -----------------------------
       - name: Prepare attachments for Discord
         id: prepare_discord_attachments
         if: steps.list_screenshots.outputs.files_list != ''
@@ -113,23 +114,23 @@ jobs:
         run: |
           IFS=',' read -ra files <<< "${{ steps.list_screenshots.outputs.files_list }}"
 
-          {
-            echo 'attachments_yaml<<EOF'       # ← NO quotes around EOF
-            for file in "${files[@]}"; do
-              file=$(echo "$file" | xargs)     # trim spaces
-              echo "  - file: ${file}"
-              echo "    filename: $(basename "$file")"
-            done
-            echo 'EOF'                         # ← closing token must match exactly
-          } >> "$GITHUB_OUTPUT"
-      # finally post to Discord
+          # Build a JSON array, e.g. [{"file":"logs/a.png","name":"a.png"}, …]
+          json='['
+          for file in "${files[@]}"; do
+            file=$(echo "$file" | xargs)                # trim spaces
+            name=$(basename "$file")
+            json+='{"file":"'"$file"'","name":"'"$name"'"},'
+          done
+          json=${json%,}']'                            # drop trailing comma, close array
+          echo "attachments_json=$json" >> "$GITHUB_OUTPUT"
+
+      # --- the Discord step -------------------------------------------
       - name: Send Images to Discord
+        if: steps.prepare_discord_attachments.outputs.attachments_json != '' && env.DISCORD_WEBHOOK_AVAILABLE == 'true'
         uses: MineBartekSA/discord-webhook@v2
         id: discord_webhook
-        continue-on-error: true           # don’t fail the whole job if Discord is down
-        if: steps.prepare_discord_attachments.outputs.attachments_yaml != '' && env.DISCORD_WEBHOOK_AVAILABLE == 'true'
+        continue-on-error: true
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK_URL }}
           content: "Job finished! Here are the screenshots from the booking process:"
-          attachment: |
-            ${{ steps.prepare_discord_attachments.outputs.attachments_yaml }}           
+          attachment: ${{ steps.prepare_discord_attachments.outputs.attachments_json }}
