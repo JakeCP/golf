@@ -39,7 +39,9 @@
         "end": "11:00"
       },
       "status": "pending"
-    },
+    }
+  ],
+  "processedRequests": [
     {
       "id": "2025-05-22-45978",
       "requestDate": "2025-05-22T01:56:20.083Z",
@@ -48,10 +50,10 @@
         "start": "07:00",
         "end": "08:30"
       },
-      "status": "pending"
-    }
-  ],
-  "processedRequests": [
+      "status": "failed",
+      "processedDate": "2025-05-22T01:59:22.167Z",
+      "failureReason": "No times with 4 spots in range"
+    },
     {
       "id": "2025-05-22-91287",
       "requestDate": "2025-05-22T01:47:48.802Z",
