@@ -105,24 +105,23 @@ jobs:
         with:
           commit_message: Update booking queue after processing
           file_pattern: booking-queue.json
-      
+
       - name: Prepare attachments for Discord
         id: prepare_discord_attachments
-        continue-on-error: true
         if: steps.list_screenshots.outputs.files_list != ''
+        shell: bash
         run: |
           IFS=',' read -ra files <<< "${{ steps.list_screenshots.outputs.files_list }}"
-          attachments_yaml=""
-          for file_path in "${files[@]}"; do
-            file=$(echo "$file_path" | xargs)
-            attachments_yaml+="  - file: ${file}\n    filename: $(basename "$file")\n"
-          done
-          {
-            echo "attachments_yaml<<'EOF'"
-            echo -e "$attachments_yaml"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
 
+          {
+            echo 'attachments_yaml<<EOF'       # ← NO quotes around EOF
+            for file in "${files[@]}"; do
+              file=$(echo "$file" | xargs)     # trim spaces
+              echo "  - file: ${file}"
+              echo "    filename: $(basename "$file")"
+            done
+            echo 'EOF'                         # ← closing token must match exactly
+          } >> "$GITHUB_OUTPUT"
       # finally post to Discord
       - name: Send Images to Discord
         uses: MineBartekSA/discord-webhook@v2
