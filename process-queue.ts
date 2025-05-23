@@ -211,20 +211,24 @@ function filterTodayRequests(queueData: QueueData): BookingRequest[] {
   return filteredRequests.sort((a, b) => b.playDate.localeCompare(a.playDate));
 }
 
+const getFullIsoDateString = (dateStr: string): string => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const dateObj = new Date(Date.UTC(year, month - 1, day, 4, 0, 0));
+  return dateObj.toISOString();
+}
+
 // Session storage helper
 const setDateInSessionStorage = async (page: Page, playDate: string): Promise<void> => {
-  const [year, month, day] = playDate.split('-').map(Number);
-  const dateObj = new Date(Date.UTC(year, month - 1, day, 4, 0, 0));
-  const isoDateStr = dateObj.toISOString();
+  const isoDateStr = getFullIsoDateString(playDate);
   
   log(`Setting date ${playDate} in sessionStorage`);
-  await page.evaluate((isoDate) => {
-    window.sessionStorage.setItem('CHO.TT.selectedDate', `"${isoDate}"`);
-  }, isoDateStr);
+  await page.addInitScript(({v}) => {
+    sessionStorage.setItem('CHO.TT.selectedDate', `"${v}"`);
+  }, { v: isoDateStr });
 };
 
 // Browser authentication - only done once
-async function performInitialLogin(page: Page, firstRequest: BookingRequest): Promise<void> {
+async function performInitialLogin(page: Page): Promise<void> {
   log('Performing initial login to golf course website');
   const username = process.env.GOLF_USERNAME;
   const password = process.env.GOLF_PASSWORD;
@@ -232,9 +236,7 @@ async function performInitialLogin(page: Page, firstRequest: BookingRequest): Pr
   if (!username || !password) {
     throw new Error('Golf course credentials not found in environment variables');
   }
-  
   await page.goto('https://lorabaygolf.clubhouseonline-e3.com/TeeTimes/TeeSheet.aspx');
-  await setDateInSessionStorage(page, firstRequest.playDate);
   await page.getByPlaceholder('Username').fill(username);
   await page.getByPlaceholder('Password').fill(password);
   await page.getByRole('button', { name: 'Login' }).click();
@@ -294,36 +296,78 @@ async function selectDateWithClick(frame: Frame, targetDateText: string): Promis
   }
 }
 
-// Check if tee times are not yet available
-async function checkIfTooEarly(frame: Frame, playDate: string): Promise<boolean> {
-  const pageText = await frame.evaluate(() => document.body.innerText);
-  const datePattern = new Date(playDate).toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  const tooEarlyPattern = `will become available on ${datePattern} at 7:00 AM`;
-  
-  return pageText.includes(tooEarlyPattern);
-}
-
-// Find available slots with retry for "too early" case
-async function findAvailableSlotsWithRetry(frame: Frame, timeRange: TimeRange, playDate: string, maxRetries = 10): Promise<Array<Slot>> {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    const slots = await findAvailableSlots(frame, timeRange);
-    
-    if (slots.length > 0) {
-      return slots;
-    }
+async function checkPageState(frame: Frame, playDate: string): Promise<'ready' | 'too-early' | 'no-results' | 'loading'> {
+  try {
+    const pageText = await frame.evaluate(() => document.body.innerText);
     
     // Check if we're too early
-    const tooEarly = await checkIfTooEarly(frame, playDate);
-    if (tooEarly && attempt < maxRetries) {
+    const datePattern = new Date(playDate).toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const tooEarlyPattern = `will become available on ${datePattern} at 7:00 AM`;
+    if (pageText.includes(tooEarlyPattern)) {
+      return 'too-early';
+    }
+    
+    // Check if we got the "no times" message (which might mean still loading)
+    if (pageText.includes('Your search returned no times to be displayed')) {
+      return 'no-results';
+    }
+    
+    // Check if there are actual time slots visible
+    const hasTimeSlots = await frame.evaluate(() => {
+      const slots = document.querySelectorAll('div.flex-row.ng-scope div.time.ng-binding');
+      return slots.length > 0;
+    });
+    
+    if (hasTimeSlots) {
+      return 'ready';
+    }
+    
+    // No clear indicator - might still be loading
+    return 'loading';
+  } catch (error) {
+    log(`Error checking page state: ${error}`);
+    return 'loading';
+  }
+}
+
+// Find available slots with retry for "too early" and "still loading" cases
+async function findAvailableSlotsWithRetry(frame: Frame, timeRange: TimeRange, playDate: string, maxRetries = 10): Promise<Array<Slot>> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const pageState = await checkPageState(frame, playDate);
+    
+    if (pageState === 'ready') {
+      const slots = await findAvailableSlots(frame, timeRange);
+      if (slots.length > 0) {
+        return slots;
+      }
+      // If no slots in our time range, that's legitimate - stop retrying
+      log(`No available slots found in time range ${timeRange.start}-${timeRange.end}`);
+      return [];
+    }
+    
+    if (pageState === 'too-early' && attempt < maxRetries) {
       log(`Tee times not yet available (attempt ${attempt}/${maxRetries}), waiting 1 second...`);
       await frame.waitForTimeout(1000);
       await frame.goto(frame.url());
       await frame.waitForLoadState('networkidle');
+      continue;
     }
-
-    return slots;
+    
+    if (pageState === 'no-results' && attempt < maxRetries) {
+      // This might mean the page is still loading, wait a bit and check again
+      log(`Got "no times" message (attempt ${attempt}/${maxRetries}), waiting for page to fully load...`);
+      await frame.waitForTimeout(500);
+      continue;  // Don't reload, just wait and check again
+    }
+    
+    if (pageState === 'loading' && attempt < maxRetries) {
+      log(`Page still loading (attempt ${attempt}/${maxRetries}), waiting...`);
+      await frame.waitForTimeout(500);
+      continue;
+    }
   }
   
+  log(`Unable to find slots after ${maxRetries} attempts`);
   return [];
 }
 
@@ -402,7 +446,7 @@ async function bookSlot(frame: Frame, slot: Slot): Promise<boolean> {
   }
 }
 
-const confirmDateSelection = async (request: BookingRequest, frame: Frame) => {
+const confirmDateSelection = async (request: BookingRequest, frame: Frame, page: Page) => {
       // Verify the date was pre-selected
     const [year, month, day] = request.playDate.split('-').map(Number);
     const playDate = new Date(year, month - 1, day);
@@ -418,11 +462,55 @@ const confirmDateSelection = async (request: BookingRequest, frame: Frame) => {
     
     if (!dateSelected) {
       log('Date not pre-selected, falling back to click method');
+      if (takeScreenshots) {
+        const screenshotPath = path.join(logDir, `date-selection-failure-${request.playDate}-${Date.now()}.png`);
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+      }
       return await selectDateWithClick(frame, targetDateText);
     }
 
     log('Date successfully pre-selected via sessionStorage');
     return true;
+}
+
+// Wait for the page to fully load after date selection
+async function waitForDateDataToLoad(frame: Frame, timeoutMs: number = 10000): Promise<void> {
+  log('Waiting for tee time data to load...');
+  
+  try {
+    // Wait for one of several possible states that indicate the page has loaded
+    await Promise.race([
+      frame.waitForSelector(
+        'div.flex-row.ng-scope:not(.unavailable) div.availability.ng-scope strong.value.ng-binding',
+        { state: 'visible', timeout: timeoutMs }
+      ).then(() => {
+        log('Available tee times found');
+        return 'success';
+      }),
+      
+      frame.waitForSelector(
+        'text=/no.*tee.*times.*available/i',
+        { state: 'visible', timeout: timeoutMs }
+      ).then(() => {
+        log('No tee times available message found');
+        return 'no-times';
+      }),
+      
+      frame.waitForSelector(
+        'text=/will become available/i',
+        { state: 'visible', timeout: timeoutMs }
+      ).then(() => {
+        log('Too early - tee times not yet released');
+        return 'too-early';
+      })
+    ]);
+    
+    await frame.waitForTimeout(200);
+    
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    log(`WARNING: Timed out waiting for page to load after ${timeoutMs}ms: ${errorMessage}`);
+  }
 }
 
 // Process a single request (now receives page instead of creating new browser)
@@ -433,7 +521,8 @@ async function processRequest(page: Page, request: BookingRequest, isFirstReques
     }
     
     const frame = await getBookingFrame(page);
-    const dateSelected = await confirmDateSelection(request, frame);
+    await waitForDateDataToLoad(frame);
+    const dateSelected = await confirmDateSelection(request, frame, page);
     if (!dateSelected) {
       request.status = 'failed';
       request.processedDate = new Date().toISOString();
@@ -535,12 +624,15 @@ async function main(): Promise<void> {
     browser = await chromium.launch({ headless });
     const context = await browser.newContext({
       viewport: { width: 1280, height: 720 },
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      timezoneId: 'America/Toronto', 
+      locale: 'en-CA'
     });
     const page = await context.newPage();
 
     // Perform initial login with first request
-    await performInitialLogin(page, todayRequests[0]);
+    await setDateInSessionStorage(page, todayRequests[0].playDate);
+    await performInitialLogin(page);
     
     // Wait until 7:00 AM ET if scheduled run (do this AFTER login to maximize session time)
     if (process.env.IS_SCHEDULED_RUN === "true") {
@@ -550,7 +642,7 @@ async function main(): Promise<void> {
         nextHour = 0;
       }
       log(`TEMPORARY TEST: Sleeping until ${nextHour}:00 ET`);
-      await sleepUntilTimeInZone(7, 0);
+      await sleepUntilTimeInZone(nextHour, 0);
     }
     
     // Process all requests using the same browser session
