@@ -3,7 +3,7 @@ name: Process Golf Booking Queue
 on:
   schedule:
     # Run every morning at 6:55 AM
-    - cron: '55 10 * * *'
+    - cron: '58 10 * * *'
   
   # Allow manual triggering for testing
   workflow_dispatch:
@@ -47,26 +47,11 @@ jobs:
         run: npm ci
           
       - name: Install Playwright browser and OS dependencies
-        if: steps.cache-playwright-browsers.outputs.cache-hit != 'true' # Added conditional
+        if: steps.cache-playwright-browsers.outputs.cache-hit != 'true'
         run: |
           npx playwright install chromium
           npx playwright install-deps chromium
   
-      - name: Wait until 7:00 AM
-        if: github.event_name == 'schedule'
-        run: |
-          current_time=$(date +%s)
-          target_time=$(date -u -d "today 11:00:00" +%s)
-          
-          # If current time is already past 11:00 AM UTC, don't wait
-          if [ $current_time -lt $target_time ]; then
-            sleep_seconds=$((target_time - current_time))
-            echo "Waiting for $sleep_seconds seconds until 11:00 AM UTC..."
-            sleep $sleep_seconds
-          else
-            echo "It's already past 11:00 AM UTC, proceeding immediately"
-          fi
-
       - name: Process booking queue
         id: process-queue
         run: |
@@ -76,6 +61,7 @@ jobs:
           GOLF_PASSWORD: ${{ secrets.GOLF_PASSWORD }}
           DATE_OVERRIDE: ${{ secrets.DATE_OVERRIDE }}
           TAKE_SCREENSHOTS: ${{ secrets.TAKE_SCREENSHOTS }}
+          IS_SCHEDULED_RUN: ${{ github.event_name == 'schedule' }}
       
       - name: List screenshots
         id: list_screenshots
@@ -106,7 +92,6 @@ jobs:
           commit_message: Update booking queue after processing
           file_pattern: booking-queue.json
 
-          # --- before the Send-to-Discord step -----------------------------
       - name: Prepare attachments for Discord
         id: prepare_discord_attachments
         if: steps.list_screenshots.outputs.files_list != ''
@@ -124,7 +109,6 @@ jobs:
           json=${json%,}']'                            # drop trailing comma, close array
           echo "attachments_json=$json" >> "$GITHUB_OUTPUT"
 
-      # --- the Discord step -------------------------------------------
       - name: Send Images to Discord
         if: steps.prepare_discord_attachments.outputs.attachments_json != '' && env.DISCORD_WEBHOOK_AVAILABLE == 'true'
         uses: MineBartekSA/discord-webhook@v2
