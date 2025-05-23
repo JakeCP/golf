@@ -1,182 +1,54 @@
 {
   "bookingRequests": [
     {
-      "id": "2025-05-21-25839",
-      "requestDate": "2025-05-21T12:29:26.634Z",
-      "playDate": "2025-05-25",
+      "id": "test-123456",
+      "requestDate": "2025-05-17T12:00:00Z",
+      "playDate": "2025-06-17",
       "timeRange": {
-        "start": "09:20",
-        "end": "09:50"
+        "start": "16:00",
+        "end": "20:00"
+      },
+      "status": "pending",
+      "requestedBy": "test-user",
+      "processedDate": "2025-05-18T01:36:59.924Z",
+      "bookedTime": "09:30",
+      "confirmationNumber": "SIM-885403"
+    },
+    {
+      "id": "test-123456",
+      "requestDate": "2025-05-17T12:00:00Z",
+      "playDate": "2025-05-21",
+      "timeRange": {
+        "start": "07:00",
+        "end": "10:00"
+      },
+      "status": "pending",
+      "requestedBy": "test-user",
+      "processedDate": "2025-05-18T01:36:59.924Z",
+      "bookedTime": "09:30",
+      "confirmationNumber": "SIM-885403"
+    },
+    {
+      "id": "2025-05-23-85074",
+      "requestDate": "2025-05-23T11:45:50.678Z",
+      "playDate": "2025-06-23",
+      "timeRange": {
+        "start": "08:30",
+        "end": "09:20"
       },
       "status": "pending"
     },
     {
-      "id": "2025-05-21-41700",
-      "requestDate": "2025-05-21T22:07:53.557Z",
-      "playDate": "2025-06-23",
+      "id": "2025-05-23-31081",
+      "requestDate": "2025-05-23T12:04:53.421Z",
+      "playDate": "2025-05-27",
       "timeRange": {
-        "start": "07:00",
-        "end": "22:00"
+        "start": "15:10",
+        "end": "15:40"
       },
       "status": "pending"
     }
   ],
   "processedRequests": [
-    {
-      "id": "2025-05-23-13859",
-      "requestDate": "2025-05-23T02:11:09.338Z",
-      "playDate": "2025-05-24",
-      "timeRange": {
-        "start": "07:00",
-        "end": "07:30"
-      },
-      "status": "success",
-      "processedDate": "2025-05-23T02:47:43.097Z",
-      "bookedTime": "07:20"
-    },
-    {
-      "id": "2025-05-23-17402",
-      "requestDate": "2025-05-23T02:11:49.422Z",
-      "playDate": "2025-05-24",
-      "timeRange": {
-        "start": "09:50",
-        "end": "10:10"
-      },
-      "status": "failed",
-      "processedDate": "2025-05-23T02:48:49.680Z",
-      "failureReason": "No times with 4 spots in range"
-    },
-    {
-      "id": "2025-05-23-37684",
-      "requestDate": "2025-05-23T01:36:18.885Z",
-      "playDate": "2025-05-24",
-      "timeRange": {
-        "start": "08:00",
-        "end": "08:10"
-      },
-      "status": "failed",
-      "processedDate": "2025-05-23T01:39:27.264Z",
-      "failureReason": "No times with 4 spots in range"
-    },
-    {
-      "id": "2025-05-23-60840",
-      "requestDate": "2025-05-23T01:36:39.171Z",
-      "playDate": "2025-05-24",
-      "timeRange": {
-        "start": "08:30",
-        "end": "08:40"
-      },
-      "status": "failed",
-      "processedDate": "2025-05-23T01:39:27.243Z",
-      "failureReason": "No times with 4 spots in range"
-    },
-    {
-      "id": "2025-05-21-23007",
-      "requestDate": "2025-05-21T22:06:12.548Z",
-      "playDate": "2025-06-21",
-      "timeRange": {
-        "start": "09:00",
-        "end": "10:00"
-      },
-      "status": "failed",
-      "processedDate": "2025-05-22T11:01:25.420Z",
-      "failureReason": "No times with 4 spots in range"
-    },
-    {
-      "id": "2025-05-21-88373",
-      "requestDate": "2025-05-21T22:13:10.434Z",
-      "playDate": "2025-05-25",
-      "timeRange": {
-        "start": "09:50",
-        "end": "11:00"
-      },
-      "status": "success",
-      "processedDate": "2025-05-22T11:01:33.947Z",
-      "bookedTime": "11:00"
-    },
-    {
-      "id": "2025-05-22-62537",
-      "requestDate": "2025-05-22T02:51:31.167Z",
-      "playDate": "2025-06-20",
-      "timeRange": {
-        "start": "07:00",
-        "end": "08:00"
-      },
-      "status": "failed",
-      "processedDate": "2025-05-22T02:53:21.512Z",
-      "failureReason": "No times with 4 spots in range"
-    },
-    {
-      "id": "2025-05-22-558",
-      "requestDate": "2025-05-22T02:07:54.320Z",
-      "playDate": "2025-06-20",
-      "timeRange": {
-        "start": "07:00",
-        "end": "08:00"
-      },
-      "status": "failed",
-      "processedDate": "2025-05-22T02:10:23.833Z",
-      "failureReason": "No times with 4 spots in range"
-    },
-    {
-      "id": "2025-05-22-45978",
-      "requestDate": "2025-05-22T01:56:20.083Z",
-      "playDate": "2025-06-20",
-      "timeRange": {
-        "start": "07:00",
-        "end": "08:30"
-      },
-      "status": "failed",
-      "processedDate": "2025-05-22T01:59:22.167Z",
-      "failureReason": "No times with 4 spots in range"
-    },
-    {
-      "id": "2025-05-22-91287",
-      "requestDate": "2025-05-22T01:47:48.802Z",
-      "playDate": "2025-06-20",
-      "timeRange": {
-        "start": "07:00",
-        "end": "08:00"
-      },
-      "status": "failed",
-      "processedDate": "2025-05-22T01:48:54.515Z",
-      "failureReason": "No times with 4 spots in range"
-    },
-    {
-      "id": "2025-05-21-72472",
-      "requestDate": "2025-05-21T13:28:08.551Z",
-      "playDate": "2025-06-20",
-      "timeRange": {
-        "start": "09:00",
-        "end": "16:00"
-      },
-      "status": "success",
-      "processedDate": "2025-05-21T13:29:36.563Z",
-      "bookedTime": "16:00"
-    },
-    {
-      "id": "2025-05-21-69334",
-      "requestDate": "2025-05-21T13:04:40.314Z",
-      "playDate": "2025-06-20",
-      "timeRange": {
-        "start": "09:00",
-        "end": "17:00"
-      },
-      "status": "success",
-      "processedDate": "2025-05-21T13:05:23.725Z",
-      "bookedTime": "16:00"
-    },
-    {
-      "id": "2025-05-21-36198",
-      "requestDate": "2025-05-21T12:32:00.239Z",
-      "playDate": "2025-06-20",
-      "timeRange": {
-        "start": "15:00",
-        "end": "17:00"
-      },
-      "status": "success",
-      "processedDate": "2025-05-21T12:36:54.277Z",
-      "bookedTime": "16:00"
-    }
   ]
 }

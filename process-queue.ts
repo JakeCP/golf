@@ -211,9 +211,21 @@ function filterTodayRequests(queueData: QueueData): BookingRequest[] {
   return filteredRequests.sort((a, b) => b.playDate.localeCompare(a.playDate));
 }
 
-// Browser automation
-async function loginToWebsite(page: Page, request: BookingRequest): Promise<void> {
-  log('Logging in to golf course website');
+// Session storage helper
+const setDateInSessionStorage = async (page: Page, playDate: string): Promise<void> => {
+  const [year, month, day] = playDate.split('-').map(Number);
+  const dateObj = new Date(Date.UTC(year, month - 1, day, 4, 0, 0));
+  const isoDateStr = dateObj.toISOString();
+  
+  log(`Setting date ${playDate} in sessionStorage`);
+  await page.evaluate((isoDate) => {
+    window.sessionStorage.setItem('CHO.TT.selectedDate', `"${isoDate}"`);
+  }, isoDateStr);
+};
+
+// Browser authentication - only done once
+async function performInitialLogin(page: Page, firstRequest: BookingRequest): Promise<void> {
+  log('Performing initial login to golf course website');
   const username = process.env.GOLF_USERNAME;
   const password = process.env.GOLF_PASSWORD;
   
@@ -222,10 +234,19 @@ async function loginToWebsite(page: Page, request: BookingRequest): Promise<void
   }
   
   await page.goto('https://lorabaygolf.clubhouseonline-e3.com/TeeTimes/TeeSheet.aspx');
-  await setDateInSessionStorage(page, request.playDate);
+  await setDateInSessionStorage(page, firstRequest.playDate);
   await page.getByPlaceholder('Username').fill(username);
   await page.getByPlaceholder('Password').fill(password);
   await page.getByRole('button', { name: 'Login' }).click();
+  await page.waitForLoadState('networkidle');
+  log(`Logged in at ${getCurrentTimeET()}`);
+}
+
+// Navigate to booking page for subsequent requests
+async function navigateToBookingPage(page: Page, playDate: string): Promise<void> {
+  log(`Navigating to booking page for ${playDate}`);
+  await setDateInSessionStorage(page, playDate);
+  await page.goto('https://lorabaygolf.clubhouseonline-e3.com/TeeTimes/TeeSheet.aspx');
   await page.waitForLoadState('networkidle');
 }
 
@@ -357,7 +378,6 @@ async function findAvailableSlots(frame: Frame, timeRange: TimeRange): Promise<S
   }, { start: timeRange.start, end: timeRange.end });
 }
 
-
 // Book slot - no retry needed as you mentioned
 async function bookSlot(frame: Frame, slot: Slot): Promise<boolean> {
   try {
@@ -382,58 +402,34 @@ async function bookSlot(frame: Frame, slot: Slot): Promise<boolean> {
   }
 }
 
-const setDateInSessionStorage = async (page: Page, playDate: string): Promise<void> => {
-      // Set the date in sessionStorage BEFORE navigating to booking page
-    const [year, month, day] = playDate.split('-').map(Number);
-    const dateObj = new Date(Date.UTC(year, month - 1, day, 4, 0, 0));
-    const isoDateStr = dateObj.toISOString();
+const confirmDateSelection = async (request: BookingRequest, frame: Frame) => {
+  // Verify the date was pre-selected
+  const [year, month, day] = request.playDate.split('-').map(Number);
+  const playDate = new Date(year, month - 1, day);
+  const targetDateText = `${playDate.toLocaleString('en-US', { month: 'short' })} ${playDate.getDate()}`;
+  
+  const dateSelected = await frame.evaluate((expectedDate) => {
+    const selectedEl = document.querySelector('div.item.ng-scope.slick-slide.date-selected');
+    if (!selectedEl) return false;
     
-    log(`Setting date ${playDate} in sessionStorage before navigation`);
-    await page.evaluate((isoDate) => {
-      window.sessionStorage.setItem('CHO.TT.selectedDate', `"${isoDate}"`);
-    }, isoDateStr);
+    const dateDiv = selectedEl.querySelector('div.date.ng-binding');
+    return dateDiv?.textContent?.includes(expectedDate) || false;
+  }, targetDateText);
+  
+  if (!dateSelected) {
+    log('Date not pre-selected, falling back to click method');
+    return await selectDateWithClick(frame, targetDateText);
   }
 
-const confirmDateSelection = async (request: BookingRequest, frame: Frame) => {
-      // Verify the date was pre-selected
-    const [year, month, day] = request.playDate.split('-').map(Number);
-    const playDate = new Date(year, month - 1, day);
-    const targetDateText = `${playDate.toLocaleString('en-US', { month: 'short' })} ${playDate.getDate()}`;
-    
-    const dateSelected = await frame.evaluate((expectedDate) => {
-      const selectedEl = document.querySelector('div.item.ng-scope.slick-slide.date-selected');
-      if (!selectedEl) return false;
-      
-      const dateDiv = selectedEl.querySelector('div.date.ng-binding');
-      return dateDiv?.textContent?.includes(expectedDate) || false;
-    }, targetDateText);
-    
-    if (!dateSelected) {
-      log('Date not pre-selected, falling back to click method');
-      return await selectDateWithClick(frame, targetDateText);
-    }
-
-    log('Date successfully pre-selected via sessionStorage');
-    return true;
+  log('Date successfully pre-selected via sessionStorage');
+  return true;
 }
 
-// Main processing function
-async function processRequest(request: BookingRequest): Promise<{ message: string; success: boolean }> {
-  let browser: Browser | null = null;
-  
+// Process a single request (now receives page instead of creating new browser)
+async function processRequest(page: Page, request: BookingRequest, isFirstRequest: boolean): Promise<{ message: string; success: boolean }> {
   try {
-    browser = await chromium.launch({ headless });
-    const context = await browser.newContext({
-      viewport: { width: 1280, height: 720 },
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    });
-    const page = await context.newPage();
-    await loginToWebsite(page, request);
-    log(`Logged in at ${getCurrentTimeET()}`);
-    
-    // Wait until 7:00 AM ET if scheduled run (do this BEFORE navigating to save time)
-    if (process.env.IS_SCHEDULED_RUN === "true") {
-      await sleepUntilTimeInZone(7, 0);
+    if (!isFirstRequest) {
+      await navigateToBookingPage(page, request.playDate);
     }
     
     const frame = await getBookingFrame(page);
@@ -451,6 +447,10 @@ async function processRequest(request: BookingRequest): Promise<{ message: strin
     // Find available slots with retry for "too early" case
     const slots = await findAvailableSlotsWithRetry(frame, request.timeRange, request.playDate);
     if (slots.length === 0) {
+      if (takeScreenshots) {
+        const screenshotPath = path.join(logDir, `failure-${request.playDate}-${Date.now()}.png`);
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+      }
       request.status = 'failed';
       request.processedDate = new Date().toISOString();
       request.failureReason = 'No available times';
@@ -481,7 +481,7 @@ async function processRequest(request: BookingRequest): Promise<{ message: strin
     request.bookedTime = selectedSlot.time;
     
     if (takeScreenshots) {
-      const screenshotPath = path.join(logDir, `success-${request.id}-${Date.now()}.png`);
+      const screenshotPath = path.join(logDir, `success-${request.playDate}-${Date.now()}.png`);
       await page.screenshot({ path: screenshotPath, fullPage: true });
     }
     
@@ -498,8 +498,6 @@ async function processRequest(request: BookingRequest): Promise<{ message: strin
       message: `⚠️ Request ${request.id}: Error - ${request.failureReason}\n`, 
       success: false 
     };
-  } finally {
-    if (browser) await browser.close();
   }
 }
 
@@ -527,15 +525,40 @@ async function main(): Promise<void> {
       log(`  - ${req.playDate} (${req.timeRange.start}-${req.timeRange.end})`);
     });
   }
-  
+
+  let browser: Browser | null = null;
   let results = '';
   let processedCount = 0;
   
-  // Process requests sequentially for maximum speed
-  for (const request of todayRequests) {
-    const result = await processRequest(request);
-    results += result.message;
-    if (result.success) processedCount++;
+  try {
+    // Create browser and page once
+    browser = await chromium.launch({ headless });
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 720 },
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    });
+    const page = await context.newPage();
+
+    // Perform initial login with first request
+    await performInitialLogin(page, todayRequests[0]);
+    
+    // Wait until 7:00 AM ET if scheduled run (do this AFTER login to maximize session time)
+    if (process.env.IS_SCHEDULED_RUN === "true") {
+      await sleepUntilTimeInZone(7, 0);
+    }
+    
+    // Process all requests using the same browser session
+    for (let i = 0; i < todayRequests.length; i++) {
+      const request = todayRequests[i];
+      const isFirstRequest = i === 0;
+      
+      const result = await processRequest(page, request, isFirstRequest);
+      results += result.message;
+      if (result.success) processedCount++;
+    }
+    
+  } finally {
+    if (browser) await browser.close();
   }
   
   // Update queue
