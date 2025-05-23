@@ -29,7 +29,9 @@
         "end": "09:20"
       },
       "status": "pending"
-    },
+    }
+  ],
+  "processedRequests": [
     {
       "id": "2025-05-23-37684",
       "requestDate": "2025-05-23T01:36:18.885Z",
@@ -38,7 +40,9 @@
         "start": "08:00",
         "end": "08:10"
       },
-      "status": "pending"
+      "status": "failed",
+      "processedDate": "2025-05-23T01:39:27.264Z",
+      "failureReason": "No times with 4 spots in range"
     },
     {
       "id": "2025-05-23-60840",
@@ -48,10 +52,10 @@
         "start": "08:30",
         "end": "08:40"
       },
-      "status": "pending"
-    }
-  ],
-  "processedRequests": [
+      "status": "failed",
+      "processedDate": "2025-05-23T01:39:27.243Z",
+      "failureReason": "No times with 4 spots in range"
+    },
     {
       "id": "2025-05-21-23007",
       "requestDate": "2025-05-21T22:06:12.548Z",
