@@ -239,7 +239,7 @@ async function performInitialLogin(page: Page, firstRequest: BookingRequest): Pr
   await page.getByPlaceholder('Password').fill(password);
   await page.getByRole('button', { name: 'Login' }).click();
   await page.waitForLoadState('networkidle');
-  log(`Logged in at ${getCurrentTimeET()}`);
+    log(`Logged in at ${getCurrentTimeET()}`);
 }
 
 // Navigate to booking page for subsequent requests
@@ -369,7 +369,7 @@ async function findAvailableSlots(frame: Frame, timeRange: TimeRange): Promise<S
       if (timeDiv instanceof HTMLElement) {
         timeDiv.setAttribute('data-playwright-id', uniqueId);
       }
-      
+
       slots.push({ time: formattedTime, id: uniqueId });
     }
     
@@ -392,7 +392,7 @@ async function bookSlot(frame: Frame, slot: Slot): Promise<boolean> {
     await frame.getByText(/Test group \(\d+ people\)/i).click();
     
     // Click book now
-    await frame.locator('a.btn.btn-primary:has-text("BOOK NOW")').click();
+    //await frame.locator('a.btn.btn-primary:has-text("BOOK NOW")').click();
     log('Waiting for booking confirmation...');
     await frame.waitForLoadState('networkidle', { timeout: 5000 });
     return true;
@@ -403,26 +403,26 @@ async function bookSlot(frame: Frame, slot: Slot): Promise<boolean> {
 }
 
 const confirmDateSelection = async (request: BookingRequest, frame: Frame) => {
-  // Verify the date was pre-selected
-  const [year, month, day] = request.playDate.split('-').map(Number);
-  const playDate = new Date(year, month - 1, day);
-  const targetDateText = `${playDate.toLocaleString('en-US', { month: 'short' })} ${playDate.getDate()}`;
-  
-  const dateSelected = await frame.evaluate((expectedDate) => {
-    const selectedEl = document.querySelector('div.item.ng-scope.slick-slide.date-selected');
-    if (!selectedEl) return false;
+      // Verify the date was pre-selected
+    const [year, month, day] = request.playDate.split('-').map(Number);
+    const playDate = new Date(year, month - 1, day);
+    const targetDateText = `${playDate.toLocaleString('en-US', { month: 'short' })} ${playDate.getDate()}`;
     
-    const dateDiv = selectedEl.querySelector('div.date.ng-binding');
-    return dateDiv?.textContent?.includes(expectedDate) || false;
-  }, targetDateText);
-  
-  if (!dateSelected) {
-    log('Date not pre-selected, falling back to click method');
-    return await selectDateWithClick(frame, targetDateText);
-  }
+    const dateSelected = await frame.evaluate((expectedDate) => {
+      const selectedEl = document.querySelector('div.item.ng-scope.slick-slide.date-selected');
+      if (!selectedEl) return false;
+      
+      const dateDiv = selectedEl.querySelector('div.date.ng-binding');
+      return dateDiv?.textContent?.includes(expectedDate) || false;
+    }, targetDateText);
+    
+    if (!dateSelected) {
+      log('Date not pre-selected, falling back to click method');
+      return await selectDateWithClick(frame, targetDateText);
+    }
 
-  log('Date successfully pre-selected via sessionStorage');
-  return true;
+    log('Date successfully pre-selected via sessionStorage');
+    return true;
 }
 
 // Process a single request (now receives page instead of creating new browser)
@@ -525,7 +525,7 @@ async function main(): Promise<void> {
       log(`  - ${req.playDate} (${req.timeRange.start}-${req.timeRange.end})`);
     });
   }
-
+  
   let browser: Browser | null = null;
   let results = '';
   let processedCount = 0;
@@ -544,6 +544,12 @@ async function main(): Promise<void> {
     
     // Wait until 7:00 AM ET if scheduled run (do this AFTER login to maximize session time)
     if (process.env.IS_SCHEDULED_RUN === "true") {
+      const nowInET = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+      let nextHour = nowInET.getHours() + 1;
+      if (nextHour === 24) { // Handle midnight case
+        nextHour = 0;
+      }
+      log(`TEMPORARY TEST: Sleeping until ${nextHour}:00 ET`);
       await sleepUntilTimeInZone(7, 0);
     }
     
