@@ -15,16 +15,6 @@
       "confirmationNumber": "SIM-885403"
     },
     {
-      "id": "2025-05-23-85074",
-      "requestDate": "2025-05-23T11:45:50.678Z",
-      "playDate": "2025-06-23",
-      "timeRange": {
-        "start": "08:30",
-        "end": "09:20"
-      },
-      "status": "pending"
-    },
-    {
       "id": "2025-05-23-31081",
       "requestDate": "2025-05-23T12:04:53.421Z",
       "playDate": "2025-05-27",
