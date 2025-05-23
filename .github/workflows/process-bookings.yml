@@ -2,7 +2,7 @@ name: Process Golf Booking Queue
 
 on:
   schedule:
-    - cron: '55 * * * *'  
+    - cron: '55 10 * * *'
 
   workflow_dispatch:
 

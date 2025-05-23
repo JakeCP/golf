@@ -436,7 +436,7 @@ async function bookSlot(frame: Frame, slot: Slot): Promise<boolean> {
     await frame.getByText(/Test group \(\d+ people\)/i).click();
     
     // Click book now
-    //await frame.locator('a.btn.btn-primary:has-text("BOOK NOW")').click();
+    await frame.locator('a.btn.btn-primary:has-text("BOOK NOW")').click();
     log('Waiting for booking confirmation...');
     await frame.waitForLoadState('networkidle', { timeout: 5000 });
     return true;
@@ -641,7 +641,7 @@ async function main(): Promise<void> {
       if (nextHour === 24) { // Handle midnight case
         nextHour = 0;
       }
-      log(`TEMPORARY TEST: Sleeping until ${nextHour}:00 ET`);
+      log(`Sleeping until ${nextHour}:00 ET`);
       await sleepUntilTimeInZone(nextHour, 0);
     }
     
