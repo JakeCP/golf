@@ -228,7 +228,7 @@ async function simulateProcessingRequests(
     log(`SIMULATION: Successfully booked tee time at ${request.bookedTime}`);
     log(`SIMULATION: Confirmation number: ${request.confirmationNumber}`);
     
-    return `✅ Request ${request.id}: Booked for ${request.bookedTime} (Confirmation: ${request.confirmationNumber})\n`;
+    return `✅ Request ${request.id}: Booked for ${request.bookedTime} on ${request.playDate} (Confirmation: ${request.confirmationNumber})\n`;
   };
 
   // Process requests in batches for better control
@@ -438,12 +438,22 @@ async function processRealRequests(
         });
         const page = await context.newPage();
         await loginToWebsite(page);
-
+        const currentTimeInNewYork = new Date().toLocaleString('en-US', {
+          timeZone: 'America/New_York',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false
+        }); 
+        log(`Logged in successfully at ${currentTimeInNewYork}`);
         // Wait until 7:00 AM ET after login but before processing requests
         if (process.env.IS_SCHEDULED_RUN && attempt === 1) {
           log('Waiting until 7:00 AM ET before processing requests');
           try {
-            await sleepUntilTimeInZone(7, 0, 'America/New_York');
+            await sleepUntilTimeInZone(22, 15, 'America/New_York');
             log('Target time reached - starting request processing');
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
@@ -757,7 +767,17 @@ async function processSingleRequest(
       request.processedDate = new Date().toISOString();
       request.failureReason = 'No times with 4 spots in range';
       log(`INFO: No tee times found for request ${request.id}`);
-      return { message: `❌ Request ${request.id}: No available times\n`, success: false };
+      const currentTimeInNewYork = new Date().toLocaleString('en-US', {
+        timeZone: 'America/New_York',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+      return { message: `❌ Request ${request.playDate} between ${request.timeRange.start}-${request.timeRange.end} : No available times. Checked at ${currentTimeInNewYork}\n`, success: false };
     }
 
     availableTimes.sort((a, b) => a.sortableTime.localeCompare(b.sortableTime)).reverse();
@@ -770,8 +790,17 @@ async function processSingleRequest(
     request.status = 'success';
     request.processedDate = new Date().toISOString();
     request.bookedTime = selectedSlot.time;
-
-    return { message: `✅ Request ${request.id}: Booked for ${selectedSlot.time}\n`, success: true };
+    const currentTimeInNewYork = new Date().toLocaleString('en-US', {
+      timeZone: 'America/New_York',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+    return { message: `✅ Request ${request.id} on ${request.playDate}: Booked for ${selectedSlot.time}. Succeeded at ${currentTimeInNewYork}\n`, success: true };
   } catch (error) {
     request.status = 'error';
     request.processedDate = new Date().toISOString();

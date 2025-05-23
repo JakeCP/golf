@@ -3,7 +3,7 @@ name: Process Golf Booking Queue
 on:
   schedule:
     # Run every morning at 6:55 AM
-    - cron: '58 10 * * *'
+    - cron: '13 2 * * *'
   
   # Allow manual triggering for testing
   workflow_dispatch:
