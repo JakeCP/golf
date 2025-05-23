@@ -60,7 +60,7 @@ jobs:
           GOLF_PASSWORD: ${{ secrets.GOLF_PASSWORD }}
           DATE_OVERRIDE: ${{ secrets.DATE_OVERRIDE }}
           TAKE_SCREENSHOTS: ${{ secrets.TAKE_SCREENSHOTS }}
-          IS_SCHEDULED_RUN: ${{ github.event_name == 'schedule' }}
+          IS_SCHEDULED_RUN: ${{ github.event_name != 'schedule' }}
       
       - name: List screenshots
         id: list_screenshots
