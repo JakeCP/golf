@@ -13,16 +13,6 @@
       "processedDate": "2025-05-18T01:36:59.924Z",
       "bookedTime": "09:30",
       "confirmationNumber": "SIM-885403"
-    },
-    {
-      "id": "2025-05-23-31081",
-      "requestDate": "2025-05-23T12:04:53.421Z",
-      "playDate": "2025-05-27",
-      "timeRange": {
-        "start": "15:10",
-        "end": "15:40"
-      },
-      "status": "pending"
     }
   ],
   "processedRequests": []
