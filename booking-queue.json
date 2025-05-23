@@ -1,19 +1,4 @@
 {
-  "bookingRequests": [
-    {
-      "id": "test-123456",
-      "requestDate": "2025-05-17T12:00:00Z",
-      "playDate": "2025-05-21",
-      "timeRange": {
-        "start": "07:00",
-        "end": "10:00"
-      },
-      "status": "pending",
-      "requestedBy": "test-user",
-      "processedDate": "2025-05-18T01:36:59.924Z",
-      "bookedTime": "09:30",
-      "confirmationNumber": "SIM-885403"
-    }
-  ],
+  "bookingRequests": [],
   "processedRequests": []
 }
