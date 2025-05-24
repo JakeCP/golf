@@ -429,7 +429,7 @@ async function bookSlot(frame: Frame, slot: Slot): Promise<boolean> {
     await frame.click(`[data-playwright-id="${slot.id}"]`);
     
     // Wait for booking form
-    await frame.waitForSelector('a.btn.btn-primary:has-text("BOOK NOW")', { timeout: 2000 });
+    await frame.waitForSelector('a.btn.btn-primary:has-text("BOOK NOW")', { timeout: 3500 });
     
     // Complete booking
     await frame.getByText('ADD BUDDIES & GROUPS').click();
@@ -558,8 +558,12 @@ async function processRequest(page: Page, request: BookingRequest, isFirstReques
       request.status = 'failed';
       request.processedDate = new Date().toISOString();
       request.failureReason = 'Failed to complete booking';
+      if (takeScreenshots) {
+        const screenshotPath = path.join(logDir, `booking-failure-${request.playDate}-${Date.now()}.png`);
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+      }
       return { 
-        message: `❌ Request for ${request.playDate}: Booking failed\n`, 
+        message: `❌ Request for ${request.playDate}: Booking failed at ${getCurrentTimeET()}\n`, 
         success: false 
       };
     }
