@@ -9,7 +9,9 @@
         "end": "14:20"
       },
       "status": "pending"
-    },
+    }
+  ],
+  "processedRequests": [
     {
       "id": "2025-05-23-29468",
       "requestDate": "2025-05-23T21:55:19.816Z",
@@ -18,12 +20,11 @@
         "start": "15:10",
         "end": "15:40"
       },
-      "status": "pending",
-      "processedDate": "2025-05-24T11:00:16.775Z",
-      "failureReason": "Failed to complete booking"
-    }
-  ],
-  "processedRequests": [
+      "status": "success",
+      "processedDate": "2025-05-24T11:04:31.503Z",
+      "failureReason": "Failed to complete booking",
+      "bookedTime": "15:30"
+    },
     {
       "id": "2025-05-23-32542",
       "requestDate": "2025-05-23T21:58:53.229Z",
@@ -36,6 +37,5 @@
       "processedDate": "2025-05-24T11:00:02.666Z",
       "bookedTime": "09:20"
     }
-
   ]
 }
