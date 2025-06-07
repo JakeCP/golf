@@ -442,14 +442,27 @@ async function findAvailableSlots(frame: Frame, timeRange: TimeRange): Promise<S
   }, { start: timeRange.start, end: timeRange.end });
 }
 
-// Book slot - no retry needed as you mentioned
-async function bookSlot(frame: Frame, slot: Slot): Promise<boolean> {
+// Book slot - returns 'success', 'locked', or 'error'
+async function bookSlot(frame: Frame, slot: Slot): Promise<'success' | 'locked' | 'error'> {
   try {
     // Click the time slot
     await frame.click(`[data-playwright-id="${slot.id}"]`);
     
-    // Wait for booking form
-    await frame.waitForSelector('a.btn.btn-primary:has-text("BOOK NOW")', { timeout: 3500 });
+    // Check for "Time Cannot be Locked" popup or booking form
+    const result = await Promise.race([
+      frame.waitForSelector('text=/Time Cannot be Locked/i', { timeout: 3500 }).then(() => 'locked'),
+      frame.waitForSelector('a.btn.btn-primary:has-text("BOOK NOW")', { timeout: 3500 }).then(() => 'form')
+    ]).catch(() => 'timeout');
+    
+    if (result === 'locked') {
+      log(`Time slot ${slot.time} is locked by another user`);
+      return 'locked';
+    }
+    
+    if (result !== 'form') {
+      log(`Timeout waiting for booking form or lock message for ${slot.time}`);
+      return 'error';
+    }
     
     // Complete booking
     await frame.getByText('ADD BUDDIES & GROUPS').click();
@@ -459,10 +472,10 @@ async function bookSlot(frame: Frame, slot: Slot): Promise<boolean> {
     await frame.locator('a.btn.btn-primary:has-text("BOOK NOW")').click();
     log('Waiting for booking confirmation...');
     await frame.waitForLoadState('networkidle', { timeout: 5000 });
-    return true;
+    return 'success';
   } catch (error) {
     log(`Booking failed: ${error}`);
-    return false;
+    return 'error';
   }
 }
 
@@ -569,21 +582,39 @@ async function processRequest(page: Page, request: BookingRequest, isFirstReques
       };
     }
     
-    // Book the first available slot (latest time)
-    const selectedSlot = slots[0];
-    log(`Attempting to book ${selectedSlot.time}`);
+    // Try to book slots in order (latest times first)
+    let bookedSlot: Slot | null = null;
+    let lastError = 'Unknown error';
     
-    const booked = await bookSlot(frame, selectedSlot);
-    if (!booked) {
+    for (const slot of slots) {
+      log(`Attempting to book ${slot.time}`);
+      const result = await bookSlot(frame, slot);
+      
+      if (result === 'success') {
+        bookedSlot = slot;
+        break;
+      } 
+      if (result === 'locked') {
+        log(`Slot ${slot.time} locked, trying next slot...`);
+        lastError = 'Time slot locked by another user';
+        continue;
+      }
+
+      log(`Error booking ${slot.time}, trying next slot...`);
+      lastError = 'Failed to complete booking';
+      continue;
+    }
+    
+    if (!bookedSlot) {
       request.status = 'failed';
       request.processedDate = new Date().toISOString();
-      request.failureReason = 'Failed to complete booking';
+      request.failureReason = lastError;
       if (takeScreenshots) {
         const screenshotPath = path.join(logDir, `booking-failure-${request.playDate}-${Date.now()}.png`);
         await page.screenshot({ path: screenshotPath, fullPage: true });
       }
       return { 
-        message: `❌ Request for ${request.playDate}: Booking failed at ${getCurrentTimeET()}\n`, 
+        message: `❌ Request for ${request.playDate}: ${lastError} at ${getCurrentTimeET()}\n`, 
         success: false 
       };
     }
@@ -591,7 +622,7 @@ async function processRequest(page: Page, request: BookingRequest, isFirstReques
     // Success
     request.status = 'success';
     request.processedDate = new Date().toISOString();
-    request.bookedTime = selectedSlot.time;
+    request.bookedTime = bookedSlot.time;
     
     if (takeScreenshots) {
       const screenshotPath = path.join(logDir, `success-${request.playDate}-${Date.now()}.png`);
@@ -599,7 +630,7 @@ async function processRequest(page: Page, request: BookingRequest, isFirstReques
     }
     
     return { 
-      message: `✅ Request for ${request.playDate} booked for ${selectedSlot.time} at ${getCurrentTimeET()}\n`, 
+      message: `✅ Request for ${request.playDate} booked for ${bookedSlot.time} at ${getCurrentTimeET()}\n`, 
       success: true 
     };
     
