@@ -217,6 +217,14 @@ const getFullIsoDateString = (dateStr: string): string => {
   return dateObj.toISOString();
 }
 
+const isWithinThreeDaysBooking = (playDate: string): boolean => {
+  const today = getTodayDate();
+  const threeDaysAfter = new Date(today);
+  threeDaysAfter.setDate(threeDaysAfter.getDate() + 3);
+  const threeDaysString = threeDaysAfter.toISOString().split('T')[0];
+  return playDate >= today && playDate <= threeDaysString;
+}
+
 // Session storage helper
 const setDateInSessionStorage = async (page: Page, playDate: string): Promise<void> => {
   const isoDateStr = getFullIsoDateString(playDate);
@@ -332,6 +340,8 @@ async function checkPageState(frame: Frame, playDate: string): Promise<'ready' |
 
 // Find available slots with retry for "too early" and "still loading" cases
 async function findAvailableSlotsWithRetry(frame: Frame, timeRange: TimeRange, playDate: string, maxRetries = 10): Promise<Array<Slot>> {
+  const isWithin3Days = isWithinThreeDaysBooking(playDate);
+  
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     const pageState = await checkPageState(frame, playDate);
     
@@ -340,7 +350,17 @@ async function findAvailableSlotsWithRetry(frame: Frame, timeRange: TimeRange, p
       if (slots.length > 0) {
         return slots;
       }
-      // If no slots in our time range, that's legitimate - stop retrying
+      
+      // For dates within 3 days, retry a few times as slots may become available
+      if (isWithin3Days && attempt < maxRetries) {
+        log(`No slots found in time range ${timeRange.start}-${timeRange.end} (attempt ${attempt}/${maxRetries}), retrying...`);
+        await frame.waitForTimeout(500);
+        await frame.goto(frame.url());
+        await frame.waitForLoadState('networkidle');
+        continue;
+      }
+      
+      // For exactly 30-day bookings or after max retries, this is legitimate - stop retrying
       log(`No available slots found in time range ${timeRange.start}-${timeRange.end}`);
       return [];
     }
