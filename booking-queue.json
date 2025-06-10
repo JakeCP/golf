@@ -59,7 +59,9 @@
         "end": "10:30"
       },
       "status": "pending"
-    },
+    }
+  ],
+  "processedRequests": [
     {
       "id": "2025-06-10-61028",
       "requestDate": "2025-06-10T11:36:13.947Z",
@@ -68,7 +70,9 @@
         "start": "09:40",
         "end": "11:00"
       },
-      "status": "pending"
+      "status": "success",
+      "processedDate": "2025-06-10T11:54:36.698Z",
+      "bookedTime": "10:30"
     },
     {
       "id": "2025-06-10-89218",
@@ -78,10 +82,10 @@
         "start": "09:40",
         "end": "11:00"
       },
-      "status": "pending"
-    }
-  ],
-  "processedRequests": [
+      "status": "success",
+      "processedDate": "2025-06-10T11:54:40.283Z",
+      "bookedTime": "10:30"
+    },
     {
       "id": "2025-06-10-78681",
       "requestDate": "2025-06-10T11:22:05.545Z",
