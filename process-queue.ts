@@ -339,7 +339,7 @@ async function checkPageState(frame: Frame, playDate: string): Promise<'ready' |
 }
 
 // Find available slots with retry for "too early" and "still loading" cases
-async function findAvailableSlotsWithRetry(frame: Frame, timeRange: TimeRange, playDate: string, maxRetries = 20): Promise<Array<Slot>> {
+async function findAvailableSlotsWithRetry(frame: Frame, timeRange: TimeRange, playDate: string, maxRetries = 10): Promise<Array<Slot>> {
   const isWithin3Days = isWithinThreeDaysBooking(playDate);
   
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -354,7 +354,7 @@ async function findAvailableSlotsWithRetry(frame: Frame, timeRange: TimeRange, p
       // For dates within 3 days, retry a few times as slots may become available
       if (isWithin3Days && attempt < maxRetries) {
         log(`No slots found in time range ${timeRange.start}-${timeRange.end} (attempt ${attempt}/${maxRetries}), retrying...`);
-        await frame.waitForTimeout(90000); //
+        await frame.waitForTimeout(1000); //
         await frame.goto(frame.url());
         await frame.waitForLoadState('networkidle');
         continue;
