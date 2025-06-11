@@ -60,6 +60,7 @@ jobs:
           DATE_OVERRIDE: ${{ secrets.DATE_OVERRIDE }}
           TAKE_SCREENSHOTS: ${{ secrets.TAKE_SCREENSHOTS }}
           IS_SCHEDULED_RUN: ${{ github.event_name == 'schedule' }}
+          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
       
       - name: List screenshots
         id: list_screenshots
