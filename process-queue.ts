@@ -3,6 +3,7 @@ import * as path from 'path';
 import { chromium, Page, Browser, Frame } from '@playwright/test';
 import { WriteStream } from 'fs';
 import * as dotenv from 'dotenv';
+import * as https from 'https';
 
 dotenv.config();
 
@@ -262,6 +263,18 @@ async function performInitialLogin(page: Page): Promise<void> {
   if (!username || !password) {
     throw new Error('Golf course credentials not found in environment variables');
   }
+
+  // Set up response monitoring for rate limiting
+  page.on('response', response => {
+    if (response.status() === 429) {
+      log(`🚨 RATE LIMITED: ${response.status()} on ${response.url()}`);
+    } else if (response.status() >= 500) {
+      log(`⚠️ SERVER ERROR: ${response.status()} on ${response.url()}`);
+    } else if (response.status() === 403) {
+      log(`🔒 FORBIDDEN: ${response.status()} on ${response.url()}`);
+    }
+  });
+
   await page.goto('https://lorabaygolf.clubhouseonline-e3.com/TeeTimes/TeeSheet.aspx');
   await page.getByPlaceholder('Username').fill(username);
   await page.getByPlaceholder('Password').fill(password);
@@ -325,6 +338,14 @@ async function selectDateWithClick(frame: Frame, targetDateText: string): Promis
 async function checkPageState(frame: Frame, playDate: string): Promise<'ready' | 'too-early' | 'no-results' | 'loading'> {
   try {
     const pageText = await frame.evaluate(() => document.body.innerText);
+    
+    // Check for rate limiting indicators
+    if (pageText.includes('rate limit') || 
+        pageText.includes('too many requests') || 
+        pageText.includes('please wait') ||
+        pageText.includes('temporarily unavailable')) {
+      log(`🚨 POTENTIAL RATE LIMITING DETECTED: Page contains rate limiting text`);
+    }
     
     // Check if we're too early
     const datePattern = new Date(playDate).toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
@@ -401,7 +422,7 @@ async function findAvailableSlots30Day(frame: Frame, timeRange: TimeRange, playD
 }
 
 // Find available slots with retry for 3-day bookings (full page refresh approach)
-async function findAvailableSlots3Day(page: Page, frame: Frame, timeRange: TimeRange, playDate: string, maxRetries = 15): Promise<{ slots: Array<Slot>; updatedFrame: Frame }> {
+async function findAvailableSlots3Day(page: Page, frame: Frame, timeRange: TimeRange, playDate: string, maxRetries = 30): Promise<{ slots: Array<Slot>; updatedFrame: Frame }> {
   let currentFrame = frame;
   
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -413,9 +434,22 @@ async function findAvailableSlots3Day(page: Page, frame: Frame, timeRange: TimeR
         return { slots, updatedFrame: currentFrame };
       }
       
+      // Check for tournament/maintenance after 10 failed attempts
+      if (attempt === 10) {
+        log('🤖 Checking if tournament or maintenance is blocking tee times...');
+        const aiResult = await checkForTournamentWithAI(page, timeRange);
+        if (aiResult !== 'NORMAL') {
+          log(`🚫 AI detected ${aiResult.toLowerCase()}, aborting further attempts`);
+          return { slots: [], updatedFrame: currentFrame };
+        }
+      }
+      
       // For 3-day bookings, retry more aggressively as slots may become available gradually
-      log(`No slots found in time range ${timeRange.start}-${timeRange.end} (attempt ${attempt}/${maxRetries}), retrying with full page refresh...`);
-      await currentFrame.waitForTimeout(1000);
+      const baseDelay = [1, 5, 10, 15, 30][Math.min(attempt, 4)] * 1000; // 1s, 5s, 10s, 15s, 30s
+      const randomDelay = attempt > 4 ? Math.floor(Math.random() * 90000): 0; // 0-90 seconds (1.5 minutes)
+      const totalDelay = baseDelay + randomDelay;
+      log(`No slots found in time range ${timeRange.start}-${timeRange.end} (attempt ${attempt}/${maxRetries}), retrying with full page refresh after ${Math.round(totalDelay/1000)}s...`);
+      await currentFrame.waitForTimeout(totalDelay);
       
       // Full page refresh for 3-day bookings
       await navigateToBookingPage(page, playDate);
@@ -504,6 +538,71 @@ async function findAvailableSlots(frame: Frame, timeRange: TimeRange): Promise<S
     // Sort by time, prefer later times
     return slots.sort((a, b) => b.time.localeCompare(a.time));
   }, { start: timeRange.start, end: timeRange.end });
+}
+
+// Check if page shows tournament/maintenance using Gemini API
+async function checkForTournamentWithAI(page: Page, timeRange: TimeRange): Promise<'TOURNAMENT' | 'MAINTENANCE' | 'NORMAL' | 'UNCLEAR'> {
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  if (!apiKey) {
+    log('No Google AI API key found, skipping tournament check');
+    return 'UNCLEAR';
+  }
+
+  try {
+    const screenshotBuffer = await page.screenshot({ fullPage: true });
+    const screenshot = screenshotBuffer.toString('base64');
+    
+    const requestData = JSON.stringify({
+      contents: [{
+        parts: [
+          { text: `Does this golf booking page show a tournament, league, maintenance, or other reason why no tee times are available between ${timeRange.start} - ${timeRange.end}? If there are times on the page associated with random times, just not within the given range respond NORMAL. Frequent repetition of terms like league or tournament are a likely sign its one of the two. Answer with exactly one word: TOURNAMENT, LEAGUE, MAINTENANCE, NORMAL, or UNCLEAR` },
+          { inline_data: { mime_type: "image/png", data: screenshot } }
+        ]
+      }]
+    });
+
+    return new Promise((resolve) => {
+      const req = https.request({
+        hostname: 'generativelanguage.googleapis.com',
+        path: `/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(requestData)
+        }
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const response = JSON.parse(data);
+            const text = response.candidates?.[0]?.content?.parts?.[0]?.text?.trim().toUpperCase();
+            if (['TOURNAMENT', "LEAGUE", 'MAINTENANCE', 'NORMAL', 'UNCLEAR'].includes(text)) {
+              log(`🤖 AI detected: ${text}`);
+              resolve(text as any);
+            } else {
+              log(`🤖 AI response unclear: ${text}`);
+              resolve('UNCLEAR');
+            }
+          } catch (error) {
+            log(`🤖 AI API error: ${error}`);
+            resolve('UNCLEAR');
+          }
+        });
+      });
+
+      req.on('error', (error) => {
+        log(`🤖 AI request failed: ${error}`);
+        resolve('UNCLEAR');
+      });
+
+      req.write(requestData);
+      req.end();
+    });
+  } catch (error) {
+    log(`🤖 AI check failed: ${error}`);
+    return 'UNCLEAR';
+  }
 }
 
 // Book slot - returns 'success', 'locked', or 'error'
@@ -623,7 +722,7 @@ async function attemptBooking(frame: Frame, slots: Slot[]): Promise<{ bookedSlot
       bookedSlot = slot;
       break;
     } 
-    
+
     if (result === 'locked') {
       log(`Slot ${slot.time} locked, trying next slot...`);
       lastError = 'Time slot locked by another user';

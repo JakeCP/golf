@@ -1,13 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import * as fs from 'fs'
-import * as path from 'path'
 
 // Mock dependencies
 vi.mock('fs')
 vi.mock('@playwright/test')
 vi.mock('dotenv')
-
-const mockFs = vi.mocked(fs)
 
 // Import the module to test (we'll need to extract testable functions)
 // For now, we'll test the logic by copy-pasting key functions
