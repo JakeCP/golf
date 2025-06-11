@@ -541,8 +541,8 @@ async function findAvailableSlots3Day(
         return { slots, updatedFrame: currentFrame };
       }
 
-      // Check for tournament/maintenance after 10 failed attempts
-      if (attempt === 10) {
+      // Check for tournament/maintenance every 10 failed attempts
+      if (attempt > 0 && attempt % 10 === 0) {
         log(
           "🤖 Checking if tournament or maintenance is blocking tee times..."
         );
