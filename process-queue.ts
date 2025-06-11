@@ -522,6 +522,101 @@ async function findAvailableSlots30Day(
   return { slots: [], updatedFrame: frame };
 }
 
+// Check API response for booking availability
+async function checkApiForAvailability(
+  timeRange: TimeRange,
+  apiResponse: any
+): Promise<"available" | "all-booked" | "not-released"> {
+  const parseTime = (timeStr: string): number => {
+    const [hour, minute] = timeStr.split(":").map(Number);
+    return hour + minute / 60;
+  };
+
+  const startNum = parseTime(timeRange.start);
+  const endNum = parseTime(timeRange.end);
+
+  const timesInRange = apiResponse.data.teeSheet.filter((slot: any) => {
+    if (!slot.teeTime) {
+      log(`Skipping slot with no teeTime: ${JSON.stringify(slot)}`);
+      return false;
+    }
+
+    const slotTime = parseTime(slot.teeTime);
+    return slotTime >= startNum && slotTime <= endNum;
+  });
+
+  if (timesInRange.length === 0) {
+    log(`🔍 API check: No times in range ${timeRange.start}-${timeRange.end} found in API response`);
+    return "not-released";
+  }
+
+  const availableTimes = timesInRange.filter((slot: any) => slot.availPlayers === 4);
+  if (availableTimes.length > 0) {
+    log(`🟢 API check: Found ${availableTimes.length} available times in range`);
+    return "available";
+  }
+
+  const allBooked = timesInRange.every((slot: any) => slot.availPlayers === 0);
+  if (allBooked) {
+    log(`🔴 API check: All times in range are fully booked (availPlayers: 0)`);
+    return "all-booked";
+  }
+
+  log(`🟡 API check: Times exist but partial availability (not worth booking)`);
+  return "all-booked"; // Treat partial availability as not worth continuing
+}
+
+type APIResult = "available" | "all-booked" | "not-released" | "timeout" 
+
+// Navigate and capture API response during loading
+async function navigateAndCaptureApiResponse(
+  page: Page,
+  playDate: string,
+  timeRange: TimeRange
+): Promise<{ 
+  frame: Frame; 
+  apiResult: APIResult
+}> {
+  let apiResult: APIResult = "timeout";
+  const API_TIMEOUT_MS = 8000;
+  
+  // Set up API response capture BEFORE navigation
+  const responsePromise = new Promise<void>((resolve) => {
+    const timeout = setTimeout(resolve, API_TIMEOUT_MS);
+
+    const responseHandler = async (response: any) => {
+      const url = response.url();
+      if (url.includes('/api/v1/teetimes/GetAvailableTeeTimes/') && 
+          url.includes(playDate.replace(/-/g, ''))) {
+        try {
+          const responseData = await response.json();
+          apiResult = await checkApiForAvailability(timeRange, responseData);
+        } catch (error) {
+          log(`Failed to parse API response: ${error}`);
+        } finally {
+          clearTimeout(timeout);
+          page.off('response', responseHandler);
+          resolve();
+        }
+      }
+    };
+
+    page.on('response', responseHandler);
+  });
+
+  // Navigate to trigger the API call
+  await navigateToBookingPage(page, playDate);
+  const frame = await getBookingFrame(page);
+  
+  // Wait for both page load AND API response
+  await Promise.all([
+    waitForDateDataToLoad(frame),
+    responsePromise
+  ]);
+
+  return { frame, apiResult };
+}
+
 // Find available slots with retry for 3-day bookings (full page refresh approach)
 async function findAvailableSlots3Day(
   page: Page,
@@ -531,8 +626,17 @@ async function findAvailableSlots3Day(
   maxRetries = 30
 ): Promise<{ slots: Array<Slot>; updatedFrame: Frame }> {
   let currentFrame = frame;
-
+  let currentApiResult: APIResult = "timeout";
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (currentApiResult === "all-booked") {
+      log(`🛑 API confirms all times in range are booked - stopping retries`);
+      return { slots: [], updatedFrame: currentFrame };
+    } 
+    if (currentApiResult === "available") {
+      log(`🟢 API shows available times, but DOM didn't find them - continuing retries`);
+    } else if (currentApiResult === "timeout") {
+      log(`⏱️ API response timeout - continuing with DOM-based checks`);
+    }
     const pageState = await checkPageState(currentFrame, playDate);
 
     if (pageState === "ready") {
@@ -540,9 +644,9 @@ async function findAvailableSlots3Day(
       if (slots.length > 0) {
         return { slots, updatedFrame: currentFrame };
       }
-
-      // Check for tournament/maintenance every 10 failed attempts
-      if (attempt > 0 && attempt % 5 === 0) {
+    
+      // Check for tournament/maintenance every 5 failed attempts
+      if (attempt > 0 && attempt % 10 === 0) {
         log(
           "🤖 Checking if tournament or maintenance is blocking tee times..."
         );
@@ -569,10 +673,10 @@ async function findAvailableSlots3Day(
       await currentFrame.waitForTimeout(totalDelay);
 
       // Full page refresh for 3-day bookings
-      await navigateToBookingPage(page, playDate);
-
+      const { apiResult, frame} = await navigateAndCaptureApiResponse(page, playDate, timeRange);
+      currentFrame = frame;
+      currentApiResult = apiResult;
       // Get new frame reference after page refresh
-      currentFrame = await getBookingFrame(page);
       await waitForDateDataToLoad(currentFrame);
       continue;
     }
