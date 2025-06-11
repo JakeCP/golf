@@ -152,14 +152,32 @@ const sleepUntilTimeInZone = async (targetHour24: number, targetMinute: number, 
             } catch (error) {
                 console.error("Error in calculateDelay:", error);
                 reject(error);
-                return null;
+                return -1; // Signal error to caller
             }
         };
 
-        const delay = calculateDelay();
+        let delay = calculateDelay();
 
-        if (delay === null) {
-            return;
+        // Fallback for DST edge cases - use simpler calculation if main logic fails
+        if (delay === -1) {
+            console.log('Primary timezone calculation failed, using fallback method');
+            try {
+                const now = new Date();
+                const todayInZone = new Date(now.toLocaleString('en-US', { timeZone: timeZoneIANA }));
+                const targetTime = new Date(todayInZone);
+                targetTime.setHours(targetHour24, targetMinute, 0, 0);
+                
+                // If target time is in the past, it's for tomorrow
+                if (targetTime.getTime() <= now.getTime()) {
+                    delay = 0;
+                } else {
+                    delay = targetTime.getTime() - now.getTime();
+                }
+            } catch (fallbackError) {
+                console.error('Fallback timezone calculation also failed:', fallbackError);
+                reject(fallbackError);
+                return;
+            }
         }
 
         if (delay <= 0) {
@@ -338,34 +356,26 @@ async function checkPageState(frame: Frame, playDate: string): Promise<'ready' |
   }
 }
 
-// Find available slots with retry for "too early" and "still loading" cases
-async function findAvailableSlotsWithRetry(frame: Frame, timeRange: TimeRange, playDate: string, maxRetries = 10): Promise<Array<Slot>> {
-  const isWithin3Days = isWithinThreeDaysBooking(playDate);
-  
+// Find available slots with retry for 30-day bookings (frame-based retries)
+async function findAvailableSlots30Day(frame: Frame, timeRange: TimeRange, playDate: string, maxRetries = 10): Promise<{ slots: Array<Slot>; updatedFrame: Frame }> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const pageState = await checkPageState(frame, playDate);
     
     if (pageState === 'ready') {
       const slots = await findAvailableSlots(frame, timeRange);
       if (slots.length > 0) {
-        return slots;
+        return { slots, updatedFrame: frame };
       }
       
-      // For dates within 3 days, retry a few times as slots may become available
-      if (isWithin3Days && attempt < maxRetries) {
+      // For 30-day bookings, retry a few times in case of loading issues
         log(`No slots found in time range ${timeRange.start}-${timeRange.end} (attempt ${attempt}/${maxRetries}), retrying...`);
-        await frame.waitForTimeout(1000); //
+        await frame.waitForTimeout(1000);
         await frame.goto(frame.url());
         await frame.waitForLoadState('networkidle');
         continue;
-      }
-      
-      // For exactly 30-day bookings or after max retries, this is legitimate - stop retrying
-      log(`No available slots found in time range ${timeRange.start}-${timeRange.end}`);
-      return [];
     }
     
-    if (pageState === 'too-early' && attempt < maxRetries) {
+    if (pageState === 'too-early') {
       log(`Tee times not yet available (attempt ${attempt}/${maxRetries}), waiting 1 second...`);
       await frame.waitForTimeout(1000);
       await frame.goto(frame.url());
@@ -373,14 +383,13 @@ async function findAvailableSlotsWithRetry(frame: Frame, timeRange: TimeRange, p
       continue;
     }
     
-    if (pageState === 'no-results' && attempt < maxRetries) {
-      // This might mean the page is still loading, wait a bit and check again
+    if (pageState === 'no-results') {
       log(`Got "no times" message (attempt ${attempt}/${maxRetries}), waiting for page to fully load...`);
       await frame.waitForTimeout(500);
-      continue;  // Don't reload, just wait and check again
+      continue;
     }
     
-    if (pageState === 'loading' && attempt < maxRetries) {
+    if (pageState === 'loading') {
       log(`Page still loading (attempt ${attempt}/${maxRetries}), waiting...`);
       await frame.waitForTimeout(500);
       continue;
@@ -388,7 +397,62 @@ async function findAvailableSlotsWithRetry(frame: Frame, timeRange: TimeRange, p
   }
   
   log(`Unable to find slots after ${maxRetries} attempts`);
-  return [];
+  return { slots: [], updatedFrame: frame };
+}
+
+// Find available slots with retry for 3-day bookings (full page refresh approach)
+async function findAvailableSlots3Day(page: Page, frame: Frame, timeRange: TimeRange, playDate: string, maxRetries = 15): Promise<{ slots: Array<Slot>; updatedFrame: Frame }> {
+  let currentFrame = frame;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const pageState = await checkPageState(currentFrame, playDate);
+    
+    if (pageState === 'ready') {
+      const slots = await findAvailableSlots(currentFrame, timeRange);
+      if (slots.length > 0) {
+        return { slots, updatedFrame: currentFrame };
+      }
+      
+      // For 3-day bookings, retry more aggressively as slots may become available gradually
+      log(`No slots found in time range ${timeRange.start}-${timeRange.end} (attempt ${attempt}/${maxRetries}), retrying with full page refresh...`);
+      await currentFrame.waitForTimeout(1000);
+      
+      // Full page refresh for 3-day bookings
+      await navigateToBookingPage(page, playDate);
+      
+      // Get new frame reference after page refresh
+      currentFrame = await getBookingFrame(page);
+      await waitForDateDataToLoad(currentFrame);
+      continue;
+    }
+
+    
+    if (pageState === 'too-early') {
+      log(`Tee times not yet available (attempt ${attempt}/${maxRetries}), waiting with full page refresh...`);
+      await currentFrame.waitForTimeout(1000);
+      
+      // Full page refresh for 3-day bookings
+      await navigateToBookingPage(page, playDate);
+      currentFrame = await getBookingFrame(page);
+      await waitForDateDataToLoad(currentFrame);
+      continue;
+    }
+    
+    if (pageState === 'no-results') {
+      log(`Got "no times" message (attempt ${attempt}/${maxRetries}), waiting for times to be released...`);
+      await currentFrame.waitForTimeout(500);
+      continue;
+    }
+    
+    if (pageState === 'loading') {
+      log(`Page still loading (attempt ${attempt}/${maxRetries}), waiting...`);
+      await currentFrame.waitForTimeout(500);
+      continue;
+    }
+  }
+  
+  log(`Unable to find slots after ${maxRetries} attempts`);
+  return { slots: [], updatedFrame: currentFrame };
 }
 
 // Find available slots
@@ -546,8 +610,36 @@ async function waitForDateDataToLoad(frame: Frame, timeoutMs: number = 10000): P
   }
 }
 
-// Process a single request (now receives page instead of creating new browser)
-async function processRequest(page: Page, request: BookingRequest, isFirstRequest: boolean): Promise<{ message: string; success: boolean }> {
+// Shared booking attempt logic
+async function attemptBooking(frame: Frame, slots: Slot[]): Promise<{ bookedSlot: Slot | null; lastError: string }> {
+  let bookedSlot: Slot | null = null;
+  let lastError = 'Unknown error';
+  
+  for (const slot of slots) {
+    log(`Attempting to book ${slot.time}`);
+    const result = await bookSlot(frame, slot);
+    
+    if (result === 'success') {
+      bookedSlot = slot;
+      break;
+    } 
+    
+    if (result === 'locked') {
+      log(`Slot ${slot.time} locked, trying next slot...`);
+      lastError = 'Time slot locked by another user';
+      continue;
+    }
+
+    log(`Error booking ${slot.time}, trying next slot...`);
+    lastError = 'Failed to complete booking';
+    continue;
+  }
+  
+  return { bookedSlot, lastError };
+}
+
+// Process a 30-day booking request (uses frame-based approach)
+async function process30DayRequest(page: Page, request: BookingRequest, isFirstRequest: boolean): Promise<{ message: string; success: boolean }> {
   try {
     if (!isFirstRequest) {
       await navigateToBookingPage(page, request.playDate);
@@ -566,11 +658,11 @@ async function processRequest(page: Page, request: BookingRequest, isFirstReques
       };
     }
 
-    // Find available slots with retry for "too early" case
-    const slots = await findAvailableSlotsWithRetry(frame, request.timeRange, request.playDate);
+    // For 30-day bookings, use frame-based retry logic to handle loading states
+    const { slots } = await findAvailableSlots30Day(frame, request.timeRange, request.playDate);
     if (slots.length === 0) {
       if (takeScreenshots) {
-        const screenshotPath = path.join(logDir, `failure-${request.playDate}-${Date.now()}.png`);
+        const screenshotPath = path.join(logDir, `failure-30day-${request.playDate}-${Date.now()}.png`);
         await page.screenshot({ path: screenshotPath, fullPage: true });
       }
       request.status = 'failed';
@@ -582,35 +674,13 @@ async function processRequest(page: Page, request: BookingRequest, isFirstReques
       };
     }
     
-    // Try to book slots in order (latest times first)
-    let bookedSlot: Slot | null = null;
-    let lastError = 'Unknown error';
-    
-    for (const slot of slots) {
-      log(`Attempting to book ${slot.time}`);
-      const result = await bookSlot(frame, slot);
-      
-      if (result === 'success') {
-        bookedSlot = slot;
-        break;
-      } 
-      if (result === 'locked') {
-        log(`Slot ${slot.time} locked, trying next slot...`);
-        lastError = 'Time slot locked by another user';
-        continue;
-      }
-
-      log(`Error booking ${slot.time}, trying next slot...`);
-      lastError = 'Failed to complete booking';
-      continue;
-    }
-    
+    const { bookedSlot, lastError } = await attemptBooking(frame, slots);
     if (!bookedSlot) {
       request.status = 'failed';
       request.processedDate = new Date().toISOString();
       request.failureReason = lastError;
       if (takeScreenshots) {
-        const screenshotPath = path.join(logDir, `booking-failure-${request.playDate}-${Date.now()}.png`);
+        const screenshotPath = path.join(logDir, `booking-failure-30day-${request.playDate}-${Date.now()}.png`);
         await page.screenshot({ path: screenshotPath, fullPage: true });
       }
       return { 
@@ -625,7 +695,7 @@ async function processRequest(page: Page, request: BookingRequest, isFirstReques
     request.bookedTime = bookedSlot.time;
     
     if (takeScreenshots) {
-      const screenshotPath = path.join(logDir, `success-${request.playDate}-${Date.now()}.png`);
+      const screenshotPath = path.join(logDir, `success-30day-${request.playDate}-${Date.now()}.png`);
       await page.screenshot({ path: screenshotPath, fullPage: true });
     }
     
@@ -643,6 +713,97 @@ async function processRequest(page: Page, request: BookingRequest, isFirstReques
       success: false 
     };
   }
+}
+
+// Process a 3-day booking request (uses full page refresh approach)
+async function process3DayRequest(page: Page, request: BookingRequest): Promise<{ message: string; success: boolean }> {
+  try {
+    // For 3-day bookings, always do a full page refresh to ensure we get the latest times
+    await navigateToBookingPage(page, request.playDate);
+    
+    const frame = await getBookingFrame(page);
+    await waitForDateDataToLoad(frame);
+    
+    const dateSelected = await confirmDateSelection(request, frame, page);
+    if (!dateSelected) {
+      request.status = 'failed';
+      request.processedDate = new Date().toISOString();
+      request.failureReason = 'Could not select date';
+      return { 
+        message: `❌ Request for ${request.playDate}: Failed to select date\n`, 
+        success: false 
+      };
+    }
+
+    // For 3-day bookings, use aggressive retry logic with full page refreshes
+    const { slots } = await findAvailableSlots3Day(page, frame, request.timeRange, request.playDate);
+    if (slots.length === 0) {
+      if (takeScreenshots) {
+        const screenshotPath = path.join(logDir, `failure-3day-${request.playDate}-${Date.now()}.png`);
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+      }
+      request.status = 'failed';
+      request.processedDate = new Date().toISOString();
+      request.failureReason = 'No available times';
+      return { 
+        message: `❌ Request for ${request.playDate}: No available times at ${getCurrentTimeET()}\n`, 
+        success: false 
+      };
+    }
+    
+    const { bookedSlot, lastError } = await attemptBooking(frame, slots);
+    
+    if (!bookedSlot) {
+      request.status = 'failed';
+      request.processedDate = new Date().toISOString();
+      request.failureReason = lastError;
+      if (takeScreenshots) {
+        const screenshotPath = path.join(logDir, `booking-failure-3day-${request.playDate}-${Date.now()}.png`);
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+      }
+      return { 
+        message: `❌ Request for ${request.playDate}: ${lastError} at ${getCurrentTimeET()}\n`, 
+        success: false 
+      };
+    }
+    
+    // Success
+    request.status = 'success';
+    request.processedDate = new Date().toISOString();
+    request.bookedTime = bookedSlot.time;
+    
+    if (takeScreenshots) {
+      const screenshotPath = path.join(logDir, `success-3day-${request.playDate}-${Date.now()}.png`);
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+    }
+    
+    return { 
+      message: `✅ Request for ${request.playDate} booked for ${bookedSlot.time} at ${getCurrentTimeET()}\n`, 
+      success: true 
+    };
+    
+  } catch (error) {
+    request.status = 'error';
+    request.processedDate = new Date().toISOString();
+    request.failureReason = error instanceof Error ? error.message : String(error);
+    return { 
+      message: `⚠️ Request ${request.id}: Error - ${request.failureReason}\n`, 
+      success: false 
+    };
+  }
+}
+
+// Main request processor that delegates to appropriate handler
+async function processRequest(page: Page, request: BookingRequest, isFirstRequest: boolean): Promise<{ message: string; success: boolean }> {
+  const is3DayBooking = isWithinThreeDaysBooking(request.playDate);
+  
+  if (is3DayBooking) {
+    log(`Processing 3-day booking for ${request.playDate} (requires full page refresh)`);
+    return await process3DayRequest(page, request);
+  } 
+
+  log(`Processing 30-day booking for ${request.playDate} (frame-based approach)`);
+  return await process30DayRequest(page, request, isFirstRequest);
 }
 
 // Main entry point
@@ -666,7 +827,8 @@ async function main(): Promise<void> {
   if (todayRequests.length > 0) {
     log('Processing order (furthest dates first for maximum competitiveness):');
     todayRequests.forEach(req => {
-      log(`  - ${req.playDate} (${req.timeRange.start}-${req.timeRange.end})`);
+      const bookingType = isWithinThreeDaysBooking(req.playDate) ? '3-day' : '30-day';
+      log(`  - ${req.playDate} (${req.timeRange.start}-${req.timeRange.end}) [${bookingType}]`);
     });
   }
   
@@ -704,6 +866,9 @@ async function main(): Promise<void> {
     for (let i = 0; i < todayRequests.length; i++) {
       const request = todayRequests[i];
       const isFirstRequest = i === 0;
+      const is3DayBooking = isWithinThreeDaysBooking(request.playDate);
+      
+      log(`Processing request ${i + 1}/${todayRequests.length}: ${request.playDate} (${is3DayBooking ? '3-day' : '30-day'} booking)`);
       
       const result = await processRequest(page, request, isFirstRequest);
       results += result.message;
