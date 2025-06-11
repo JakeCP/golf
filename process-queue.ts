@@ -542,12 +542,12 @@ async function findAvailableSlots3Day(
       }
 
       // Check for tournament/maintenance every 10 failed attempts
-      if (attempt > 0 && attempt % 10 === 0) {
+      if (attempt > 0 && attempt % 5 === 0) {
         log(
           "🤖 Checking if tournament or maintenance is blocking tee times..."
         );
         const aiResult = await checkStateWithAI(page, timeRange);
-        if (aiResult !== "PENDING") {
+        if (!["PENDING", "AVAILABLE"].includes(aiResult)) {
           log(
             `🚫 AI detected ${aiResult.toLowerCase()}, aborting further attempts`
           );
@@ -700,8 +700,8 @@ async function checkStateWithAI(
             {
               text: `Analyze this golf booking page for the time range ${timeRange.start} - ${timeRange.end}:
 
-1. If there are available tee times within this range, respond: AVAILABLE
-2. If there are tee times within this range but all show "Not Available", respond: BOOKED  
+1. If there are tee times within this range showing "Available 4" (exactly 4 spots), respond: AVAILABLE
+2. If there are tee times within this range but they show "Not Available" or "Available 1/2/3" (insufficient spots), respond: BOOKED  
 3. If there are no tee times displayed within this range (but times exist before/after), respond: PENDING
 4. If there are repeated identical entries, event names, or patterns indicating an organized event (tournament, league, etc.), respond: EVENT
 5. If maintenance-related terms appear, respond: MAINTENANCE
@@ -726,7 +726,7 @@ Answer with exactly one word: AVAILABLE, BOOKED, PENDING, EVENT, MAINTENANCE, or
       const req = https.request(
         {
           hostname: "generativelanguage.googleapis.com",
-          path: `/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+          path: `/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
           method: "POST",
           headers: {
             "Content-Type": "application/json",
