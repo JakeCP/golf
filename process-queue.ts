@@ -546,8 +546,8 @@ async function findAvailableSlots3Day(
         log(
           "🤖 Checking if tournament or maintenance is blocking tee times..."
         );
-        const aiResult = await checkForTournamentWithAI(page, timeRange);
-        if (aiResult !== "NORMAL") {
+        const aiResult = await checkStateWithAI(page, timeRange);
+        if (aiResult !== "PENDING") {
           log(
             `🚫 AI detected ${aiResult.toLowerCase()}, aborting further attempts`
           );
@@ -677,10 +677,12 @@ async function findAvailableSlots(
 }
 
 // Check if page shows tournament/maintenance using Gemini API
-async function checkForTournamentWithAI(
+async function checkStateWithAI(
   page: Page,
   timeRange: TimeRange
-): Promise<"TOURNAMENT" | "MAINTENANCE" | "NORMAL" | "UNCLEAR"> {
+): Promise<
+  "AVAILABLE" | "EVENT" | "BOOKED" | "PENDING" | "MAINTENANCE" | "UNCLEAR"
+> {
   const apiKey = process.env.GOOGLE_AI_API_KEY;
   if (!apiKey) {
     log("No Google AI API key found, skipping tournament check");
@@ -696,7 +698,23 @@ async function checkForTournamentWithAI(
         {
           parts: [
             {
-              text: `Does this golf booking page show a tournament, league, maintenance, or other reason why no tee times are available between ${timeRange.start} - ${timeRange.end}? If there are times on the page associated with random times, just not within the given range respond NORMAL. Frequent repetition of terms like league or tournament are a likely sign its one of the two. Answer with exactly one word: TOURNAMENT, LEAGUE, MAINTENANCE, NORMAL, or UNCLEAR`,
+              text: `Analyze this golf booking page for the time range ${timeRange.start} - ${timeRange.end}:
+
+1. If there are available tee times within this range, respond: AVAILABLE
+2. If there are tee times within this range but all show "Not Available", respond: BOOKED  
+3. If there are no tee times displayed within this range (but times exist before/after), respond: PENDING
+4. If there are repeated identical entries, event names, or patterns indicating an organized event (tournament, league, etc.), respond: EVENT
+5. If maintenance-related terms appear, respond: MAINTENANCE
+6. If the page structure is unclear or doesn't fit above categories, respond: UNCLEAR
+
+Look for these EVENT indicators:
+- Repeated identical text across multiple time slots
+- League names: "MENS LEAGUE", "WOMENS LEAGUE", "SENIOR LEAGUE", etc.
+- Tournament/event names: "CANADA/LORA BAY DAY", "CLUB CHAMPIONSHIP", etc.
+- Blocked time periods with consistent labeling
+- Any text that appears identically across 3+ consecutive time slots
+
+Answer with exactly one word: AVAILABLE, BOOKED, PENDING, EVENT, MAINTENANCE, or UNCLEAR`,
             },
             { inline_data: { mime_type: "image/png", data: screenshot } },
           ],
@@ -726,10 +744,11 @@ async function checkForTournamentWithAI(
                 .toUpperCase();
               if (
                 [
-                  "TOURNAMENT",
-                  "LEAGUE",
+                  "AVAILABLE",
+                  "EVENT",
+                  "BOOKED",
+                  "PENDING",
                   "MAINTENANCE",
-                  "NORMAL",
                   "UNCLEAR",
                 ].includes(text)
               ) {
