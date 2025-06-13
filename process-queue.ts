@@ -645,7 +645,7 @@ async function findAvailableSlots3Day(
         return { slots, updatedFrame: currentFrame };
       }
     
-      // Check for tournament/maintenance every 5 failed attempts
+      // Check for tournament/maintenance every 10 failed attempts
       if (attempt > 0 && attempt % 10 === 0) {
         log(
           "🤖 Checking if tournament or maintenance is blocking tee times..."
@@ -984,7 +984,7 @@ async function waitForDateDataToLoad(
           { state: "visible", timeout: timeoutMs }
         )
         .then(() => {
-          log("Available tee times found");
+          log("tee times have loaded successfully");
           return "success";
         }),
 
@@ -1074,7 +1074,7 @@ async function process30DayRequest(
     }
 
     // For 30-day bookings, use frame-based retry logic to handle loading states
-    const { slots } = await findAvailableSlots30Day(
+    const { slots, updatedFrame } = await findAvailableSlots30Day(
       frame,
       request.timeRange,
       request.playDate
@@ -1098,7 +1098,7 @@ async function process30DayRequest(
       };
     }
 
-    const { bookedSlot, lastError } = await attemptBooking(frame, slots);
+    const { bookedSlot, lastError } = await attemptBooking(updatedFrame, slots);
     if (!bookedSlot) {
       request.status = "failed";
       request.processedDate = new Date().toISOString();
@@ -1173,7 +1173,7 @@ async function process3DayRequest(
     }
 
     // For 3-day bookings, use aggressive retry logic with full page refreshes
-    const { slots } = await findAvailableSlots3Day(
+    const { slots, updatedFrame } = await findAvailableSlots3Day(
       page,
       frame,
       request.timeRange,
@@ -1198,7 +1198,7 @@ async function process3DayRequest(
       };
     }
 
-    const { bookedSlot, lastError } = await attemptBooking(frame, slots);
+    const { bookedSlot, lastError } = await attemptBooking(updatedFrame, slots);
 
     if (!bookedSlot) {
       request.status = "failed";
