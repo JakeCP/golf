@@ -620,23 +620,32 @@ async function navigateAndCaptureApiResponse(
 // Find available slots with retry for 3-day bookings (full page refresh approach)
 async function findAvailableSlots3Day(
   page: Page,
-  frame: Frame,
   timeRange: TimeRange,
   playDate: string,
   maxRetries = 30
-): Promise<{ slots: Array<Slot>; updatedFrame: Frame }> {
-  let currentFrame = frame;
+): Promise<{ slots: Array<Slot>; updatedFrame: Frame | null }> {
+  let currentFrame: Frame | null = null;
   let currentApiResult: APIResult = "timeout";
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    
+    const { apiResult, frame} = await navigateAndCaptureApiResponse(page, playDate, timeRange);
+    currentFrame = frame;
+    currentApiResult = apiResult;
+    await waitForDateDataToLoad(currentFrame);
+    
     if (currentApiResult === "all-booked") {
       log(`🛑 API confirms all times in range are booked - stopping retries`);
       return { slots: [], updatedFrame: currentFrame };
     } 
+    
     if (currentApiResult === "available") {
       log(`🟢 API shows available times, but DOM didn't find them - continuing retries`);
-    } else if (currentApiResult === "timeout") {
+    } 
+    
+    if (currentApiResult === "timeout") {
       log(`⏱️ API response timeout - continuing with DOM-based checks`);
     }
+    
     const pageState = await checkPageState(currentFrame, playDate);
 
     if (pageState === "ready") {
@@ -671,13 +680,6 @@ async function findAvailableSlots3Day(
         )}s...`
       );
       await currentFrame.waitForTimeout(totalDelay);
-
-      // Full page refresh for 3-day bookings
-      const { apiResult, frame} = await navigateAndCaptureApiResponse(page, playDate, timeRange);
-      currentFrame = frame;
-      currentApiResult = apiResult;
-      // Get new frame reference after page refresh
-      await waitForDateDataToLoad(currentFrame);
       continue;
     }
 
@@ -686,12 +688,6 @@ async function findAvailableSlots3Day(
         `Tee times not yet available (attempt ${attempt}/${maxRetries}), waiting with full page refresh...`
       );
       await currentFrame.waitForTimeout(1000);
-
-      // Full page refresh for 3-day bookings
-      await navigateToBookingPage(page, playDate);
-      currentFrame = await getBookingFrame(page);
-      await waitForDateDataToLoad(currentFrame);
-      continue;
     }
 
     if (pageState === "no-results") {
@@ -718,6 +714,16 @@ async function findAvailableSlots(
   frame: Frame,
   timeRange: TimeRange
 ): Promise<Slot[]> {
+  // Wait for any loaders to disappear before scanning for slots
+  try {
+    await frame.waitForSelector('div.loader-wpr', { state: 'hidden', timeout: 3000 });
+  } catch (e) {
+    // Loader might not exist or already hidden, continue
+  }
+  
+  // Give a brief moment for the page to stabilize after loader disappears
+  await frame.waitForTimeout(300);
+  
   return frame.evaluate(
     ({ start, end }) => {
       const parseTime = (timeStr: string): number => {
@@ -890,8 +896,20 @@ async function bookSlot(
   slot: Slot
 ): Promise<"success" | "locked" | "error"> {
   try {
-    // Click the time slot
-    await frame.click(`[data-playwright-id="${slot.id}"]`);
+    // Wait for any loaders to disappear before clicking
+    try {
+      await frame.waitForSelector('div.loader-wpr', { state: 'hidden', timeout: 5000 });
+    } catch (e) {
+      // Loader might not exist or already hidden, continue
+    }
+        
+    // Click the time slot - try normal click first, then force if needed
+    try {
+      await frame.click(`[data-playwright-id="${slot.id}"]`, { timeout: 10000 });
+    } catch (error) {
+      log(`Normal click failed for ${slot.time}, trying force click: ${error}`);
+      await frame.click(`[data-playwright-id="${slot.id}"]`, { force: true, timeout: 5000 });
+    }
 
     // Check for "Time Cannot be Locked" popup or booking form
     const result = await Promise.race([
@@ -1155,31 +1173,13 @@ async function process3DayRequest(
   request: BookingRequest
 ): Promise<{ message: string; success: boolean }> {
   try {
-    // For 3-day bookings, always do a full page refresh to ensure we get the latest times
-    await navigateToBookingPage(page, request.playDate);
-
-    const frame = await getBookingFrame(page);
-    await waitForDateDataToLoad(frame);
-
-    const dateSelected = await confirmDateSelection(request, frame, page);
-    if (!dateSelected) {
-      request.status = "failed";
-      request.processedDate = new Date().toISOString();
-      request.failureReason = "Could not select date";
-      return {
-        message: `❌ Request for ${request.playDate}: Failed to select date\n`,
-        success: false,
-      };
-    }
-
     // For 3-day bookings, use aggressive retry logic with full page refreshes
     const { slots, updatedFrame } = await findAvailableSlots3Day(
       page,
-      frame,
       request.timeRange,
       request.playDate
     );
-    if (slots.length === 0) {
+    if (slots.length === 0 || updatedFrame === null) {
       if (takeScreenshots) {
         const screenshotPath = path.join(
           logDir,
