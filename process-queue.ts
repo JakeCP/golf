@@ -925,6 +925,13 @@ async function bookSlot(
 
     if (result === "locked") {
       log(`Time slot ${slot.time} is locked by another user`);
+      // Close the locked modal before returning so it doesn't block subsequent clicks
+      try {
+        await frame.getByRole('button', { name: 'CLOSE' }).click({ timeout: 3000 });
+        log(`Closed locked modal for ${slot.time}`);
+      } catch (error) {
+        log(`Failed to close locked modal for ${slot.time}: ${error}`);
+      }
       return "locked";
     }
 
