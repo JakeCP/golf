@@ -1,16 +1,6 @@
 {
   "bookingRequests": [
     {
-      "id": "2025-05-25-69118",
-      "requestDate": "2025-05-25T02:12:45.149Z",
-      "playDate": "2025-06-16",
-      "timeRange": {
-        "start": "09:40",
-        "end": "11:00"
-      },
-      "status": "pending"
-    },
-    {
       "id": "2025-05-25-70271",
       "requestDate": "2025-05-25T02:14:04.151Z",
       "playDate": "2025-06-23",
