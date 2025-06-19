@@ -21,11 +21,21 @@ document.addEventListener('DOMContentLoaded', function() {
     const defaultDate = new Date(today);
     defaultDate.setDate(today.getDate() + 30);
     
+    // Set minimum date to 4 days from today
+    const minDate = new Date(today);
+    minDate.setDate(today.getDate() + 4);
+    
     // Format date as YYYY-MM-DD for input[type="date"]
     const year = defaultDate.getFullYear();
     const month = (defaultDate.getMonth() + 1).toString().padStart(2, '0'); // Months are 0-indexed
     const day = defaultDate.getDate().toString().padStart(2, '0');
     dateInput.value = `${year}-${month}-${day}`;
+    
+    // Format minimum date as YYYY-MM-DD for input[type="date"]
+    const minYear = minDate.getFullYear();
+    const minMonth = (minDate.getMonth() + 1).toString().padStart(2, '0');
+    const minDay = minDate.getDate().toString().padStart(2, '0');
+    dateInput.min = `${minYear}-${minMonth}-${minDay}`;
     
     // Auto-detect GitHub repository information from URL (for GitHub Pages)
     autoDetectRepoInfo();
