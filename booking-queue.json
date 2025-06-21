@@ -1,16 +1,6 @@
 {
   "bookingRequests": [
     {
-      "id": "2025-06-19-86117",
-      "requestDate": "2025-06-19T21:34:27.737Z",
-      "playDate": "2025-06-24",
-      "timeRange": {
-        "start": "16:00",
-        "end": "16:30"
-      },
-      "status": "pending"
-    },
-    {
       "id": "2025-06-20-66126",
       "requestDate": "2025-06-20T11:15:23.557Z",
       "playDate": "2025-06-30",
@@ -27,16 +17,6 @@
       "timeRange": {
         "start": "09:30",
         "end": "10:30"
-      },
-      "status": "pending"
-    },
-    {
-      "id": "2025-06-20-99454",
-      "requestDate": "2025-06-20T11:23:17.027Z",
-      "playDate": "2025-07-21",
-      "timeRange": {
-        "start": "08:30",
-        "end": "09:20"
       },
       "status": "pending"
     },
@@ -72,6 +52,30 @@
     }
   ],
   "processedRequests": [
+    {
+      "id": "2025-06-20-99454",
+      "requestDate": "2025-06-20T11:23:17.027Z",
+      "playDate": "2025-07-21",
+      "timeRange": {
+        "start": "08:30",
+        "end": "09:20"
+      },
+      "status": "failed",
+      "processedDate": "2025-06-21T11:00:13.423Z",
+      "failureReason": "No available times"
+    },
+    {
+      "id": "2025-06-19-86117",
+      "requestDate": "2025-06-19T21:34:27.737Z",
+      "playDate": "2025-06-24",
+      "timeRange": {
+        "start": "16:00",
+        "end": "16:30"
+      },
+      "status": "success",
+      "processedDate": "2025-06-21T11:00:18.223Z",
+      "bookedTime": "16:30"
+    },
     {
       "id": "2025-06-19-73669",
       "requestDate": "2025-06-19T13:51:08.357Z",
