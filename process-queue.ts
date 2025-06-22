@@ -947,7 +947,7 @@ async function bookSlot(
     // Click book now
     await frame.locator('a.btn.btn-primary:has-text("BOOK NOW")').click();
     log("Waiting for booking confirmation...");
-    await frame.waitForLoadState("networkidle", { timeout: 5000 });
+    await frame.waitForLoadState("networkidle", { timeout: 7000 });
     return "success";
   } catch (error) {
     log(`Booking failed: ${error}`);
