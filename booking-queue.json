@@ -39,7 +39,9 @@
         "end": "16:10"
       },
       "status": "pending"
-    },
+    }
+  ],
+  "processedRequests": [
     {
       "id": "2025-06-21-16083",
       "requestDate": "2025-06-21T02:28:55.017Z",
@@ -48,10 +50,10 @@
         "start": "14:00",
         "end": "15:00"
       },
-      "status": "pending"
-    }
-  ],
-  "processedRequests": [
+      "status": "failed",
+      "processedDate": "2025-06-22T11:00:12.658Z",
+      "failureReason": "No available times"
+    },
     {
       "id": "2025-06-20-99454",
       "requestDate": "2025-06-20T11:23:17.027Z",
