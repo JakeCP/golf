@@ -914,11 +914,11 @@ async function bookSlot(
     // Check for "Time Cannot be Locked" popup or booking form
     const result = await Promise.race([
       frame
-        .waitForSelector("text=/Time Cannot be Locked/i", { timeout: 3500 })
+        .waitForSelector("text=/Time Cannot be Locked/i", { timeout: 4000 })
         .then(() => "locked"),
       frame
         .waitForSelector('a.btn.btn-primary:has-text("BOOK NOW")', {
-          timeout: 3500,
+          timeout: 4000,
         })
         .then(() => "form"),
     ]).catch(() => "timeout");
