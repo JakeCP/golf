@@ -269,7 +269,7 @@ async function initializeQueue(): Promise<QueueData> {
 function filterTodayRequests(queueData: QueueData): BookingRequest[] {
   const today = getTodayDate();
   const thirtyDaysFromToday = new Date(today);
-  thirtyDaysFromToday.setDate(thirtyDaysFromToday.getDate() + 30);
+  thirtyDaysFromToday.setDate(thirtyDaysFromToday.getDate() + 21);
   const thirtyDaysString = thirtyDaysFromToday.toISOString().split("T")[0];
 
   const threeDaysAfter = new Date(today);
