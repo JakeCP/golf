@@ -634,7 +634,7 @@ async function findAvailableSlots3Day(
     currentApiResult = apiResult;
     await waitForDateDataToLoad(currentFrame);
     
-    if (currentApiResult === "all-booked") {
+    if (currentApiResult === "all-booked" && attempt > 10) {
       log(`🛑 API confirms all times in range are booked - stopping retries`);
       return { slots: [], updatedFrame: currentFrame };
     } 
