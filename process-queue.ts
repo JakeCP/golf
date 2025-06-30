@@ -472,7 +472,7 @@ async function findAvailableSlots30Day(
   frame: Frame,
   timeRange: TimeRange,
   playDate: string,
-  maxRetries = 15
+  maxRetries = 30
 ): Promise<{ slots: Array<Slot>; updatedFrame: Frame }> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const pageState = await checkPageState(frame, playDate);
@@ -490,6 +490,7 @@ async function findAvailableSlots30Day(
       await frame.waitForTimeout(1000);
       await frame.goto(frame.url());
       await frame.waitForLoadState("networkidle");
+      attempt+= 2; // Skip next two attempts to avoid flooding the serve -- this is probably not recoverable
       continue;
     }
 
