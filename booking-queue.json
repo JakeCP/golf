@@ -39,7 +39,9 @@
         "end": "11:00"
       },
       "status": "pending"
-    },
+    }
+  ],
+  "processedRequests": [
     {
       "id": "2025-06-28-73337",
       "requestDate": "2025-06-28T21:44:33.196Z",
@@ -48,7 +50,9 @@
         "start": "08:30",
         "end": "09:20"
       },
-      "status": "pending"
+      "status": "failed",
+      "processedDate": "2025-06-30T11:00:24.734Z",
+      "failureReason": "No available times"
     },
     {
       "id": "2025-06-30-99045",
@@ -58,10 +62,10 @@
         "start": "08:10",
         "end": "09:20"
       },
-      "status": "pending"
-    }
-  ],
-  "processedRequests": [
+      "status": "failed",
+      "processedDate": "2025-06-30T11:02:50.136Z",
+      "failureReason": "Failed to complete booking"
+    },
     {
       "id": "2025-06-24-43040",
       "requestDate": "2025-06-24T11:20:01.323Z",
