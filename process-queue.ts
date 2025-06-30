@@ -269,7 +269,7 @@ async function initializeQueue(): Promise<QueueData> {
 function filterTodayRequests(queueData: QueueData): BookingRequest[] {
   const today = getTodayDate();
   const thirtyDaysFromToday = new Date(today);
-  thirtyDaysFromToday.setDate(thirtyDaysFromToday.getDate() + 21);
+  thirtyDaysFromToday.setDate(thirtyDaysFromToday.getDate() + 30);
   const thirtyDaysString = thirtyDaysFromToday.toISOString().split("T")[0];
 
   const threeDaysAfter = new Date(today);
@@ -634,7 +634,7 @@ async function findAvailableSlots3Day(
     currentApiResult = apiResult;
     await waitForDateDataToLoad(currentFrame);
     
-    if (currentApiResult === "all-booked" && attempt > 10) {
+    if (currentApiResult === "all-booked") {
       log(`🛑 API confirms all times in range are booked - stopping retries`);
       return { slots: [], updatedFrame: currentFrame };
     } 
@@ -1251,7 +1251,7 @@ async function processRequest(
   request: BookingRequest,
   isFirstRequest: boolean
 ): Promise<{ message: string; success: boolean }> {
-  const is3DayBooking = !isFirstRequest; //isWithinThreeDaysBooking(request.playDate);
+  const is3DayBooking = isWithinThreeDaysBooking(request.playDate);
 
   if (is3DayBooking) {
     log(
