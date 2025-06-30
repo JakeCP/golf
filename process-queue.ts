@@ -954,7 +954,7 @@ async function completeBookingForm(frame: Frame, slotTime: string): Promise<"suc
     await frame.locator('a.btn.btn-primary:has-text("BOOK NOW")').click();
     log("Waiting for booking confirmation...");
     await frame.waitForLoadState("networkidle", { timeout: 5000 });
-    await frame.waitForSelector("text=/Booking Confirmed/i", { timeout: 15000 });
+    await frame.waitForSelector("text=/Booking Completed/i", { timeout: 15000 });
     return "success";
   } catch (error) {
     log(`Booking form completion failed for ${slotTime}: ${error}`);
