@@ -472,7 +472,7 @@ async function findAvailableSlots30Day(
   frame: Frame,
   timeRange: TimeRange,
   playDate: string,
-  maxRetries = 10
+  maxRetries = 15
 ): Promise<{ slots: Array<Slot>; updatedFrame: Frame }> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const pageState = await checkPageState(frame, playDate);
@@ -495,9 +495,9 @@ async function findAvailableSlots30Day(
 
     if (pageState === "too-early") {
       log(
-        `Tee times not yet available (attempt ${attempt}/${maxRetries}), waiting 1 second...`
+        `Tee times not yet available (attempt ${attempt}/${maxRetries}), waiting 0.3 seconds...`
       );
-      await frame.waitForTimeout(1000);
+      await frame.waitForTimeout(300);
       await frame.goto(frame.url());
       await frame.waitForLoadState("networkidle");
       continue;
@@ -947,7 +947,8 @@ async function bookSlot(
     // Click book now
     await frame.locator('a.btn.btn-primary:has-text("BOOK NOW")').click();
     log("Waiting for booking confirmation...");
-    await frame.waitForLoadState("networkidle", { timeout: 7000 });
+    await frame.waitForLoadState("networkidle", { timeout: 5000 });
+    await frame.waitForSelector("text=/Booking Confirmed/i", { timeout: 15000 });
     return "success";
   } catch (error) {
     log(`Booking failed: ${error}`);
