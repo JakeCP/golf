@@ -4,7 +4,6 @@
       "module": "CommonJS",
       "moduleResolution": "node",
       "esModuleInterop": true,
-      "strict": true,
       "sourceMap": true,
       "outDir": "./dist",
       "rootDir": "./",
@@ -19,8 +18,8 @@
       "strictPropertyInitialization": true,
       "noImplicitThis": true,
       "alwaysStrict": true,
-      "noUnusedLocals": true,
-      "noUnusedParameters": true,
+      "noUnusedLocals": false,
+      "noUnusedParameters": false,
       "noImplicitReturns": true,
       "noFallthroughCasesInSwitch": true
     },
