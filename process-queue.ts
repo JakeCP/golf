@@ -1251,7 +1251,7 @@ async function processRequest(
   request: BookingRequest,
   isFirstRequest: boolean
 ): Promise<{ message: string; success: boolean }> {
-  const is3DayBooking = isWithinThreeDaysBooking(request.playDate);
+  const is3DayBooking = !isFirstRequest; //isWithinThreeDaysBooking(request.playDate);
 
   if (is3DayBooking) {
     log(
