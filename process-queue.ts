@@ -640,7 +640,7 @@ async function findAvailableSlots3Day(
     } 
     
     if (currentApiResult === "available") {
-      log(`🟢 API shows available times, but DOM didn't find them - continuing retries`);
+      log(`🟢 API shows available times`);
     } 
     
     if (currentApiResult === "timeout") {
