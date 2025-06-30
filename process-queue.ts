@@ -653,20 +653,6 @@ async function findAvailableSlots3Day(
       if (slots.length > 0) {
         return { slots, updatedFrame: currentFrame };
       }
-    
-      // Check for tournament/maintenance every 10 failed attempts
-      if (attempt > 0 && attempt % 10 === 0) {
-        log(
-          "🤖 Checking if tournament or maintenance is blocking tee times..."
-        );
-        const aiResult = await checkStateWithAI(page, timeRange);
-        if (!["PENDING", "AVAILABLE"].includes(aiResult)) {
-          log(
-            `🚫 AI detected ${aiResult.toLowerCase()}, aborting further attempts`
-          );
-          return { slots: [], updatedFrame: currentFrame };
-        }
-      }
 
       // For 3-day bookings, retry more aggressively as slots may become available gradually
       const baseDelay = [1, 5, 10, 15, 30][Math.min(attempt, 4)] * 1000; // 1s, 5s, 10s, 15s, 30s
