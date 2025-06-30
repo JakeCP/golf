@@ -877,56 +877,75 @@ Answer with exactly one word: AVAILABLE, BOOKED, PENDING, EVENT, MAINTENANCE, or
   }
 }
 
-// Book slot - returns 'success', 'locked', or 'error'
-async function bookSlot(
-  frame: Frame,
-  slot: Slot
-): Promise<"success" | "locked" | "error"> {
+// Handle locked popup cleanup
+async function handleLockedPopup(frame: Frame, slotTime: string): Promise<"locked"> {
+  log(`Time slot ${slotTime} is locked by another user`);
+  // Close the locked modal before returning so it doesn't block subsequent clicks
   try {
-    // Wait for any loaders to disappear before clicking
-    try {
-      await frame.waitForSelector('div.loader-wpr', { state: 'hidden', timeout: 5000 });
-    } catch (e) {
-      // Loader might not exist or already hidden, continue
-    }
-        
-    // Click the time slot - try normal click first, then force if needed
-    try {
-      await frame.click(`[data-playwright-id="${slot.id}"]`, { timeout: 10000 });
-    } catch (error) {
-      log(`Normal click failed for ${slot.time}, trying force click: ${error}`);
-      await frame.click(`[data-playwright-id="${slot.id}"]`, { force: true, timeout: 5000 });
-    }
+    await frame.getByRole('button', { name: 'CLOSE' }).click({ timeout: 3000 });
+    log(`Closed locked modal for ${slotTime}`);
+  } catch (error) {
+    log(`Failed to close locked modal for ${slotTime}: ${error}`);
+  }
+  return "locked";
+}
 
-    // Check for "Time Cannot be Locked" popup or booking form
-    const result = await Promise.race([
-      frame
-        .waitForSelector("text=/Time Cannot be Locked/i", { timeout: 4000 })
-        .then(() => "locked"),
-      frame
-        .waitForSelector('a.btn.btn-primary:has-text("BOOK NOW")', {
-          timeout: 4000,
-        })
-        .then(() => "form"),
-    ]).catch(() => "timeout");
-
-    if (result === "locked") {
-      log(`Time slot ${slot.time} is locked by another user`);
-      // Close the locked modal before returning so it doesn't block subsequent clicks
-      try {
-        await frame.getByRole('button', { name: 'CLOSE' }).click({ timeout: 3000 });
-        log(`Closed locked modal for ${slot.time}`);
-      } catch (error) {
-        log(`Failed to close locked modal for ${slot.time}: ${error}`);
-      }
-      return "locked";
+// Wait for loader to appear or disappear
+async function waitForLoader(
+  frame: Frame, 
+  state: 'visible' | 'hidden', 
+  timeout: number,
+  slotTime?: string
+): Promise<boolean> {
+  try {
+    await frame.waitForSelector('div.loader-wpr', { state, timeout });
+    if (slotTime) {
+      const action = state === 'visible' ? 'appeared' : 'disappeared';
+      log(`Loader ${action} for ${slotTime}`);
     }
-
-    if (result !== "form") {
-      log(`Timeout waiting for booking form or lock message for ${slot.time}`);
-      return "error";
+    return true;
+  } catch (error) {
+    if (slotTime) {
+      const action = state === 'visible' ? 'appearance' : 'disappearance';
+      log(`Loader ${action} timeout for ${slotTime}: ${error}`);
     }
+    return false;
+  }
+}
 
+// Click element using direct DOM event dispatch (bypasses loader interference)
+async function clickWithDispatch(frame: Frame, selector: string, slotTime: string): Promise<boolean> {
+  try {
+    const clicked = await frame.evaluate((sel) => {
+      const element = document.querySelector(sel);
+      if (!element) return false;
+      
+      // Create and dispatch a click event directly
+      const clickEvent = new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        view: window
+      });
+      element.dispatchEvent(clickEvent);
+      return true;
+    }, selector);
+    
+    if (clicked) {
+      log(`Successfully dispatched click event for ${slotTime}`);
+      return true;
+    } else {
+      log(`Element not found for dispatch click: ${selector}`);
+      return false;
+    }
+  } catch (error) {
+    log(`Dispatch click failed for ${slotTime}: ${error}`);
+    return false;
+  }
+}
+
+// Complete the booking form process
+async function completeBookingForm(frame: Frame, slotTime: string): Promise<"success" | "error"> {
+  try {
     // Complete booking
     await frame.getByText("ADD BUDDIES & GROUPS").click();
     await frame.getByText(/Test group \(\d+ people\)/i).click();
@@ -937,6 +956,75 @@ async function bookSlot(
     await frame.waitForLoadState("networkidle", { timeout: 5000 });
     await frame.waitForSelector("text=/Booking Confirmed/i", { timeout: 15000 });
     return "success";
+  } catch (error) {
+    log(`Booking form completion failed for ${slotTime}: ${error}`);
+    return "error";
+  }
+}
+
+// Book slot - returns 'success', 'locked', or 'error'
+async function bookSlot(
+  frame: Frame,
+  slot: Slot
+): Promise<"success" | "locked" | "error"> {
+  try {
+    // Wait for any loaders to disappear before clicking
+    log("Waiting for loader to disappear before booking...");
+    await waitForLoader(frame, 'hidden', 5000);
+        
+    // Click the time slot - try dispatch first, then force click for better error info
+    const dispatchSuccess = await clickWithDispatch(frame, `[data-playwright-id="${slot.id}"]`, slot.time);
+    
+    if (!dispatchSuccess) {
+      log(`Dispatch click failed for ${slot.time}, trying force click for better diagnostics`);
+      try {
+        await frame.click(`[data-playwright-id="${slot.id}"]`, { force: true, timeout: 8000 });
+      } catch (forceError) {
+        log(`Force click failed for ${slot.time}: ${forceError}`);
+        return "error";
+      }
+    }
+
+    // Race between loader appearing and immediate lock popup
+    const initialResult = await Promise.race([
+      waitForLoader(frame, 'visible', 3000, slot.time).then(() => "loader"),
+      frame.waitForSelector("text=/Time Cannot be Locked/i", { timeout: 3000 }).then(() => "locked"),
+      frame.waitForSelector('a.btn.btn-primary:has-text("BOOK NOW")', { timeout: 2000 }).then(() => "form")
+    ]).catch(() => "no-immediate-response");
+
+    if (initialResult === "locked") {
+      return await handleLockedPopup(frame, slot.time);
+    }
+
+    if (initialResult === "loader") {
+      // Wait for loader to disappear
+      await waitForLoader(frame, 'hidden', 10000, slot.time);
+      log(`Page load complete for ${slot.time}`);
+    }
+
+    if (initialResult === "form") {
+      log(`Booking form appeared immediately for ${slot.time}`);
+      return await completeBookingForm(frame, slot.time);
+    }
+    
+    log(`No loader or immediate lock for ${slot.time}, assuming instant load`);
+    // Now check for final state (booking form, delayed lock popup, etc.)
+    const result = await Promise.race([
+      frame.waitForSelector("text=/Time Cannot be Locked/i", { timeout: 2000 }).then(() => "locked"),
+      frame.waitForSelector('a.btn.btn-primary:has-text("BOOK NOW")', { timeout: 2000 }).then(() => "form")
+    ]).catch(() => "timeout");
+
+    if (result === "locked") {
+      return await handleLockedPopup(frame, slot.time);
+    }
+
+    if (result !== "form") {
+      log(`Timeout waiting for booking form or lock message for ${slot.time}`);
+      return "error";
+    }
+
+    // Complete the booking form
+    return await completeBookingForm(frame, slot.time);
   } catch (error) {
     log(`Booking failed: ${error}`);
     return "error";
