@@ -1,16 +1,6 @@
 {
   "bookingRequests": [
     {
-      "id": "2025-06-20-61373",
-      "requestDate": "2025-06-20T11:17:05.004Z",
-      "playDate": "2025-07-04",
-      "timeRange": {
-        "start": "09:30",
-        "end": "10:30"
-      },
-      "status": "pending"
-    },
-    {
       "id": "2025-06-24-19774",
       "requestDate": "2025-06-24T11:21:28.014Z",
       "playDate": "2025-08-01",
@@ -122,6 +112,18 @@
     }
   ],
   "processedRequests": [
+    {
+      "id": "2025-06-20-61373",
+      "requestDate": "2025-06-20T11:17:05.004Z",
+      "playDate": "2025-07-04",
+      "timeRange": {
+        "start": "09:30",
+        "end": "10:30"
+      },
+      "status": "success",
+      "processedDate": "2025-07-01T11:00:10.905Z",
+      "bookedTime": "10:20"
+    },
     {
       "id": "2025-06-28-73337",
       "requestDate": "2025-06-28T21:44:33.196Z",
