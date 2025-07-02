@@ -61,16 +61,6 @@
       "status": "pending"
     },
     {
-      "id": "2025-06-30-31603",
-      "requestDate": "2025-06-30T23:09:58.191Z",
-      "playDate": "2025-08-08",
-      "timeRange": {
-        "start": "08:30",
-        "end": "09:20"
-      },
-      "status": "pending"
-    },
-    {
       "id": "2025-06-30-66296",
       "requestDate": "2025-06-30T23:10:37.029Z",
       "playDate": "2025-08-08",
