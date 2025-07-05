@@ -7,6 +7,14 @@ import * as https from "https";
 
 dotenv.config();
 
+// Custom Error Classes
+class WrongPageError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WrongPageError";
+  }
+}
+
 // Types
 interface TimeRange {
   start: string;
@@ -942,7 +950,7 @@ async function clickWithDispatch(frame: Frame, selector: string, slotTime: strin
     
     if (!clicked) {
       log(`Element not found for dispatch click: ${selector}`);
-      return false; // Plausibly this should throw an exception
+      throw new WrongPageError(`Element not found for dispatch click: ${selector}`);
     }
 
     log(`Successfully dispatched click event for ${slotTime}`);
@@ -950,6 +958,35 @@ async function clickWithDispatch(frame: Frame, selector: string, slotTime: strin
   } catch (error) {
     log(`Dispatch click failed for ${slotTime}: ${error}`);
     return false;
+  }
+}
+
+// Handle wrong page error by checking current state
+async function handleWrongPageError(frame: Frame, slotTime: string, error: WrongPageError): Promise<"success" | "error"> {
+  log(`Wrong page detected during booking for ${slotTime}: ${error.message}`);
+  
+  // Check if we're actually on the booking page by looking for "BOOK NOW" button
+  try {
+    const bookingCompleted = await frame.locator("text=/Booking Completed/i").isVisible();
+    if (bookingCompleted) {
+      log(`Booking already completed for ${slotTime}, skipping`);
+      return "success";
+    }
+
+    const bookNowExists = await frame.locator('a.btn.btn-primary:has-text("BOOK NOW")').isVisible();
+    if (!bookNowExists) {
+      log(`"BOOK NOW" button not found, taking screenshot for ${slotTime}`);
+      const page = frame.page();
+      await page.screenshot({ path: `wrong-page-${slotTime}-${Date.now()}.png` });
+      log(`Screenshot saved for unknown page state during ${slotTime}`);
+      return "error";
+    }
+    
+    log(`"BOOK NOW" button found, attempting to complete booking for ${slotTime}`);
+    return await completeBookingForm(frame, slotTime);
+  } catch (checkError) {
+    log(`Error checking page state for ${slotTime}: ${checkError}`);
+    return "error";
   }
 }
 
@@ -1040,6 +1077,10 @@ async function bookSlot(
     // Complete the booking form
     return await completeBookingForm(frame, slot.time);
   } catch (error) {
+    if (error instanceof WrongPageError) {
+      return await handleWrongPageError(frame, slot.time, error);
+    }
+    
     log(`Booking failed: ${error}`);
     return "error";
   }
