@@ -898,6 +898,16 @@ async function waitForLoader(
   slotTime?: string
 ): Promise<boolean> {
   try {
+    // First check if loader is already in desired state
+    const currentState = await frame.locator('div.loader-wpr').isVisible();
+    const isAlreadyInDesiredState = (state === 'visible' && currentState) || (state === 'hidden' && !currentState);
+    
+    if (isAlreadyInDesiredState && slotTime) {
+        const action = state === 'visible' ? 'already visible' : 'already hidden';
+        log(`Loader ${action} for ${slotTime}`);
+        return true;
+    }
+    
     await frame.waitForSelector('div.loader-wpr', { state, timeout });
     if (slotTime) {
       const action = state === 'visible' ? 'appeared' : 'disappeared';
@@ -930,13 +940,13 @@ async function clickWithDispatch(frame: Frame, selector: string, slotTime: strin
       return true;
     }, selector);
     
-    if (clicked) {
-      log(`Successfully dispatched click event for ${slotTime}`);
-      return true;
-    } else {
+    if (!clicked) {
       log(`Element not found for dispatch click: ${selector}`);
-      return false;
+      return false; // Plausibly this should throw an exception
     }
+
+    log(`Successfully dispatched click event for ${slotTime}`);
+    return true;
   } catch (error) {
     log(`Dispatch click failed for ${slotTime}: ${error}`);
     return false;
@@ -954,7 +964,7 @@ async function completeBookingForm(frame: Frame, slotTime: string): Promise<"suc
     await frame.locator('a.btn.btn-primary:has-text("BOOK NOW")').click();
     log("Waiting for booking confirmation...");
     await frame.waitForLoadState("networkidle", { timeout: 5000 });
-    await frame.waitForSelector("text=/Booking Completed/i", { timeout: 15000 });
+    await frame.waitForSelector("text=/Booking Completed/i", { timeout: 20000 });
     return "success";
   } catch (error) {
     log(`Booking form completion failed for ${slotTime}: ${error}`);
@@ -998,8 +1008,12 @@ async function bookSlot(
 
     if (initialResult === "loader") {
       // Wait for loader to disappear
-      await waitForLoader(frame, 'hidden', 10000, slot.time);
-      log(`Page load complete for ${slot.time}`);
+      const result = await waitForLoader(frame, 'hidden', 10000, slot.time);
+      // TODO: This probably should be an error, but I don't trust the loader logic yet
+      // if (!result) {
+      //   log(`Loader did not disappear for ${slot.time}, booking failed`);
+      //   return "error";
+      // }
     }
 
     if (initialResult === "form") {
@@ -1007,7 +1021,7 @@ async function bookSlot(
       return await completeBookingForm(frame, slot.time);
     }
     
-    log(`No loader or immediate lock for ${slot.time}, assuming instant load`);
+    log(`Page load complete for ${slot.time}. Confirming booking page state...`);
     // Now check for final state (booking form, delayed lock popup, etc.)
     const result = await Promise.race([
       frame.waitForSelector("text=/Time Cannot be Locked/i", { timeout: 2000 }).then(() => "locked"),
@@ -1019,7 +1033,7 @@ async function bookSlot(
     }
 
     if (result !== "form") {
-      log(`Timeout waiting for booking form or lock message for ${slot.time}`);
+      log(`Timeout waiting for booking form or lock message for ${slot.time}, state: ${result}`, );
       return "error";
     }
 
