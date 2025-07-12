@@ -21,16 +21,6 @@
       "status": "pending"
     },
     {
-      "id": "2025-06-30-45432",
-      "requestDate": "2025-06-30T23:11:01.813Z",
-      "playDate": "2025-08-11",
-      "timeRange": {
-        "start": "08:30",
-        "end": "09:20"
-      },
-      "status": "pending"
-    },
-    {
       "id": "2025-06-30-33578",
       "requestDate": "2025-06-30T23:11:10.312Z",
       "playDate": "2025-08-15",
@@ -69,6 +59,20 @@
         "end": "15:20"
       },
       "status": "pending"
+    }
+  ],
+  "processedRequests": [
+    {
+      "id": "2025-06-30-45432",
+      "requestDate": "2025-06-30T23:11:01.813Z",
+      "playDate": "2025-08-11",
+      "timeRange": {
+        "start": "08:30",
+        "end": "09:20"
+      },
+      "status": "success",
+      "processedDate": "2025-07-12T11:00:20.330Z",
+      "bookedTime": "09:10"
     },
     {
       "id": "2025-07-10-63807",
@@ -78,10 +82,10 @@
         "start": "09:30",
         "end": "10:30"
       },
-      "status": "pending"
-    }
-  ],
-  "processedRequests": [
+      "status": "failed",
+      "processedDate": "2025-07-12T11:02:18.458Z",
+      "failureReason": "Failed to complete booking"
+    },
     {
       "id": "2025-07-09-57063",
       "requestDate": "2025-07-09T11:41:07.436Z",
