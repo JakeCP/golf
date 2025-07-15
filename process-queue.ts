@@ -1347,8 +1347,8 @@ async function process3DayRequest(
         success: false,
       };
     }
-
-    const { bookedSlot, lastError } = await attemptBooking(updatedFrame, slots);
+    const reversedSlots = slots.slice().reverse();
+    const { bookedSlot, lastError } = await attemptBooking(updatedFrame, reversedSlots);
 
     if (!bookedSlot) {
       request.status = "failed";
