@@ -554,15 +554,27 @@ async function checkApiForAvailability(
     return slotTime >= startNum && slotTime <= endNum;
   });
 
-  if (timesInRange.length === 0) {
-    log(`🔍 API check: No times in range ${timeRange.start}-${timeRange.end} found in API response`);
-    return "not-released";
-  }
 
   const availableTimes = timesInRange.filter((slot: any) => slot.availPlayers === 4);
   if (availableTimes.length > 0) {
     log(`🟢 API check: Found ${availableTimes.length} available times in range`);
     return "available";
+  }
+
+  const timesIn3DayRelease = apiResponse.data.teeSheet.filter((slot: any) => {
+    if (!slot.teeTime) {
+      log(`Skipping slot with no teeTime: ${JSON.stringify(slot)}`);
+      return false;
+    }
+
+    const slotTime = parseTime(slot.teeTime);
+    // Check if slot is in the 3-day release window (9:30-11:20)
+    return slotTime >= 9.5 && slotTime <= (11 + 20/60);
+  });
+
+  if (timesInRange.length === 0 || timesIn3DayRelease.length === 0) {
+    log(`🔍 API check: No times in range ${timeRange.start}-${timeRange.end} or no 3-day release times (9:30-11:20) found in API response`);
+    return "not-released";
   }
 
   const allBooked = timesInRange.every((slot: any) => slot.availPlayers === 0);
