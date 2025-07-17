@@ -487,7 +487,17 @@ async function findAvailableSlots30Day(
 
     if (pageState === "ready") {
       const slots = await findAvailableSlots(frame, timeRange);
+      
+      // Log the available slots found
       if (slots.length > 0) {
+        const slotTimes = slots.map(slot => slot.time).join(", ");
+        log(`🟢 Found ${slots.length} available slots in time range ${timeRange.start}-${timeRange.end}: ${slotTimes}`);
+        
+        // Take a screenshot to show the available slots
+        const page = frame.page();
+        await page.screenshot({ path: `available-slots-${playDate}-${Date.now()}.png` });
+        log(`📸 Screenshot saved showing available slots`);
+        
         return { slots, updatedFrame: frame };
       }
 
