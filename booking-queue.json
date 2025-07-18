@@ -79,7 +79,9 @@
         "end": "09:20"
       },
       "status": "pending"
-    },
+    }
+  ],
+  "processedRequests": [
     {
       "id": "2025-07-16-99718",
       "requestDate": "2025-07-16T12:27:24.462Z",
@@ -88,10 +90,10 @@
         "start": "08:30",
         "end": "09:20"
       },
-      "status": "pending"
-    }
-  ],
-  "processedRequests": [
+      "status": "success",
+      "processedDate": "2025-07-18T11:00:16.428Z",
+      "bookedTime": "09:20"
+    },
     {
       "id": "2025-07-16-95143",
       "requestDate": "2025-07-16T12:27:09.035Z",
