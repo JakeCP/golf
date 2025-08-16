@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import { chromium, Page, Browser, Frame } from "@playwright/test";
+import { chromium, Page, Browser, Frame, Locator } from "@playwright/test";
 import { WriteStream } from "fs";
 import * as dotenv from "dotenv";
 import * as https from "https";
@@ -493,11 +493,6 @@ async function findAvailableSlots30Day(
         const slotTimes = slots.map(slot => slot.time).join(", ");
         log(`🟢 Found ${slots.length} available slots in time range ${timeRange.start}-${timeRange.end}: ${slotTimes}`);
         
-        // Take a screenshot to show the available slots
-        const page = frame.page();
-        await page.screenshot({ path: `available-slots-${playDate}-${Date.now()}.png` });
-        log(`📸 Screenshot saved showing available slots`);
-        
         return { slots, updatedFrame: frame };
       }
 
@@ -907,18 +902,67 @@ Answer with exactly one word: AVAILABLE, BOOKED, PENDING, EVENT, MAINTENANCE, or
   }
 }
 
-// Handle locked popup cleanup
-async function handleLockedPopup(frame: Frame, slotTime: string): Promise<"locked"> {
+
+export async function handleLockedPopup(
+  frame: Frame,
+  slotTime: string
+): Promise<"locked"> {
   log(`Time slot ${slotTime} is locked by another user`);
-  // Close the locked modal before returning so it doesn't block subsequent clicks
-  try {
-    await frame.getByRole('button', { name: 'CLOSE' }).click({ timeout: 3000 });
+
+  const closed =
+    (await tryDismissIn(frame)) ||               // 1) inside the frame
+    (await tryDismissIn(frame.page()));          // 2) fall back to top page
+
+  if (closed) {
     log(`Closed locked modal for ${slotTime}`);
-  } catch (error) {
-    log(`Failed to close locked modal for ${slotTime}: ${error}`);
+  } else {
+    log(`Could not close locked modal for ${slotTime} (continuing)`);
   }
   return "locked";
 }
+
+async function tryDismissIn(ctx: Page | Frame): Promise<boolean> {
+  const dialogName = /Time Cannot be Locked/i;
+
+  // Wait briefly for the dialog/text to render (handles animations)
+  const dialog = ctx.getByRole('dialog', { name: dialogName });
+  const appeared =
+    (await dialog.waitFor({ state: 'visible', timeout: 2000 }).then(() => true).catch(() => false)) ||
+    (await ctx.getByText(dialogName).first().waitFor({ state: 'visible', timeout: 2000 }).then(() => true).catch(() => false));
+
+  if (!appeared) return false;
+
+  // Scope searches to the dialog if Playwright can see it
+  const scope: Locator | Page | Frame = (await dialog.count()) ? dialog : ctx;
+
+  // Try common "close" targets in order
+  const candidates: Locator[] = [
+    scope.getByRole('button', { name: /^close$/i }),
+    scope.getByRole('link',   { name: /^close$/i }),
+    scope.getByText(/^close$/i),
+    scope.locator('[aria-label="Close"], .ui-dialog-titlebar-close, .close, [data-dismiss="modal"], [mat-dialog-close]')
+  ];
+
+  for (const c of candidates) {
+    if (await c.count()) {
+      try {
+        await c.first().click({ timeout: 1500 });
+        await dialog.waitFor({ state: 'hidden', timeout: 2000 }).catch(() => {});
+        return true;
+      } catch { /* try next candidate */ }
+    }
+  }
+
+  // Fallback: ESC often dismisses modals
+  try {
+    ('keyboard' in (ctx as Page) ? (ctx as Page) : (ctx as Frame).page()).keyboard.press('Escape');
+    await dialog.waitFor({ state: 'hidden', timeout: 1500 }).catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 
 // Wait for loader to appear or disappear
 async function waitForLoader(
