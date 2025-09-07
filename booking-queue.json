@@ -79,16 +79,6 @@
         "end": "09:40"
       },
       "status": "pending"
-    },
-    {
-      "id": "2025-09-07-76041",
-      "requestDate": "2025-09-07T19:02:45.347Z",
-      "playDate": "2025-10-24",
-      "timeRange": {
-        "start": "09:10",
-        "end": "09:40"
-      },
-      "status": "pending"
     }
   ],
   "processedRequests": [
