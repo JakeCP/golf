@@ -11,16 +11,6 @@
       "status": "pending"
     },
     {
-      "id": "2025-09-07-7893",
-      "requestDate": "2025-09-07T19:01:22.444Z",
-      "playDate": "2025-10-13",
-      "timeRange": {
-        "start": "09:10",
-        "end": "09:40"
-      },
-      "status": "pending"
-    },
-    {
       "id": "2025-09-07-10732",
       "requestDate": "2025-09-07T19:01:33.296Z",
       "playDate": "2025-10-17",
@@ -52,6 +42,18 @@
     }
   ],
   "processedRequests": [
+    {
+      "id": "2025-09-07-7893",
+      "requestDate": "2025-09-07T19:01:22.444Z",
+      "playDate": "2025-10-13",
+      "timeRange": {
+        "start": "09:10",
+        "end": "09:40"
+      },
+      "status": "success",
+      "processedDate": "2025-09-13T11:00:11.475Z",
+      "bookedTime": "09:30"
+    },
     {
       "id": "2025-09-08-23286",
       "requestDate": "2025-09-08T20:22:45.856Z",
