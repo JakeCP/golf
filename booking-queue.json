@@ -11,16 +11,6 @@
       "status": "pending"
     },
     {
-      "id": "2025-09-07-7053",
-      "requestDate": "2025-09-07T19:01:49.384Z",
-      "playDate": "2025-10-20",
-      "timeRange": {
-        "start": "09:10",
-        "end": "09:40"
-      },
-      "status": "pending"
-    },
-    {
       "id": "2025-09-07-57949",
       "requestDate": "2025-09-07T19:01:58.380Z",
       "playDate": "2025-10-24",
@@ -32,6 +22,18 @@
     }
   ],
   "processedRequests": [
+    {
+      "id": "2025-09-07-7053",
+      "requestDate": "2025-09-07T19:01:49.384Z",
+      "playDate": "2025-10-20",
+      "timeRange": {
+        "start": "09:10",
+        "end": "09:40"
+      },
+      "status": "failed",
+      "processedDate": "2025-09-20T11:00:10.214Z",
+      "failureReason": "Could not select date"
+    },
     {
       "id": "2025-09-07-10732",
       "requestDate": "2025-09-07T19:01:33.296Z",
