@@ -276,20 +276,20 @@ async function initializeQueue(): Promise<QueueData> {
 
 function filterTodayRequests(queueData: QueueData): BookingRequest[] {
   const today = getTodayDate();
-  const thirtyDaysFromToday = new Date(today);
-  thirtyDaysFromToday.setDate(thirtyDaysFromToday.getDate() + 30);
-  const thirtyDaysString = thirtyDaysFromToday.toISOString().split("T")[0];
+  const fourteenDaysFromToday = new Date(today);
+  fourteenDaysFromToday.setDate(fourteenDaysFromToday.getDate() + 14);
+  const fourteenDaysString = fourteenDaysFromToday.toISOString().split("T")[0];
 
-  const threeDaysAfter = new Date(today);
-  threeDaysAfter.setDate(threeDaysAfter.getDate() + 3);
-  const threeDaysString = threeDaysAfter.toISOString().split("T")[0];
+  const oneDayAfter = new Date(today);
+  oneDayAfter.setDate(oneDayAfter.getDate() + 1);
+  const oneDayString = oneDayAfter.toISOString().split("T")[0];
 
   const filteredRequests = queueData.bookingRequests.filter((request) => {
     if (request.status !== "pending") return false;
-    const isExactly30Days = request.playDate === thirtyDaysString;
-    const isWithin3Days =
-      request.playDate >= today && request.playDate <= threeDaysString;
-    return isExactly30Days || isWithin3Days;
+    const isExactly14Days = request.playDate === fourteenDaysString;
+    const isWithin1Day =
+      request.playDate >= today && request.playDate <= oneDayString;
+    return isExactly14Days || isWithin1Day;
   });
 
   return filteredRequests.sort((a, b) => b.playDate.localeCompare(a.playDate));
@@ -301,12 +301,12 @@ const getFullIsoDateString = (dateStr: string): string => {
   return dateObj.toISOString();
 };
 
-const isWithinThreeDaysBooking = (playDate: string): boolean => {
+const isWithin1DayBooking = (playDate: string): boolean => {
   const today = getTodayDate();
-  const threeDaysAfter = new Date(today);
-  threeDaysAfter.setDate(threeDaysAfter.getDate() + 3);
-  const threeDaysString = threeDaysAfter.toISOString().split("T")[0];
-  return playDate >= today && playDate <= threeDaysString;
+  const oneDayAfter = new Date(today);
+  oneDayAfter.setDate(oneDayAfter.getDate() + 1);
+  const oneDayString = oneDayAfter.toISOString().split("T")[0];
+  return playDate >= today && playDate <= oneDayString;
 };
 
 // Session storage helper
@@ -475,8 +475,8 @@ async function checkPageState(
   }
 }
 
-// Find available slots with retry for 30-day bookings (frame-based retries)
-async function findAvailableSlots30Day(
+// Find available slots with retry for 14-day bookings (frame-based retries)
+async function findAvailableSlots14Day(
   frame: Frame,
   timeRange: TimeRange,
   playDate: string,
@@ -496,7 +496,7 @@ async function findAvailableSlots30Day(
         return { slots, updatedFrame: frame };
       }
 
-      // For 30-day bookings, retry a few times in case of loading issues
+      // For 14-day bookings, retry a few times in case of loading issues
       log(
         `No slots found in time range ${timeRange.start}-${timeRange.end} (attempt ${attempt}/${maxRetries}), retrying...`
       );
@@ -573,12 +573,12 @@ async function checkApiForAvailability(
     }
 
     const slotTime = parseTime(slot.teeTime);
-    // Check if slot is in the 3-day release window (9:30-11:20)
+    // Check if slot is in the 1-day release window (9:30-11:20)
     return slotTime >= 9.5 && slotTime <= (11 + 20/60);
   });
 
   if (timesInRange.length === 0 || timesIn3DayRelease.length === 0) {
-    log(`🔍 API check: No times in range ${timeRange.start}-${timeRange.end} or no 3-day release times (9:30-11:20) found in API response`);
+    log(`🔍 API check: No times in range ${timeRange.start}-${timeRange.end} or no 1-day release times (9:30-11:20) found in API response`);
     return "not-released";
   }
 
@@ -643,8 +643,8 @@ async function navigateAndCaptureApiResponse(
   return { frame, apiResult };
 }
 
-// Find available slots with retry for 3-day bookings (full page refresh approach)
-async function findAvailableSlots3Day(
+// Find available slots with retry for 1-day bookings (full page refresh approach)
+async function findAvailableSlots1Day(
   page: Page,
   timeRange: TimeRange,
   playDate: string,
@@ -680,7 +680,7 @@ async function findAvailableSlots3Day(
         return { slots, updatedFrame: currentFrame };
       }
 
-      // For 3-day bookings, retry more aggressively as slots may become available gradually
+      // For 1-day bookings, retry more aggressively as slots may become available gradually
       const baseDelay = [1, 5, 10, 15, 30][Math.min(attempt, 4)] * 1000; // 1s, 5s, 10s, 15s, 30s
       const randomDelay = attempt > 4 ? Math.floor(Math.random() * 90000) : 0; // 0-90 seconds (1.5 minutes)
       const totalDelay = baseDelay + randomDelay;
@@ -1271,8 +1271,8 @@ async function attemptBooking(
   return { bookedSlot, lastError };
 }
 
-// Process a 30-day booking request (uses frame-based approach)
-async function process30DayRequest(
+// Process a 14-day booking request (uses frame-based approach)
+async function process14DayRequest(
   page: Page,
   request: BookingRequest,
   isFirstRequest: boolean
@@ -1295,8 +1295,8 @@ async function process30DayRequest(
       };
     }
 
-    // For 30-day bookings, use frame-based retry logic to handle loading states
-    const { slots, updatedFrame } = await findAvailableSlots30Day(
+    // For 14-day bookings, use frame-based retry logic to handle loading states
+    const { slots, updatedFrame } = await findAvailableSlots14Day(
       frame,
       request.timeRange,
       request.playDate
@@ -1305,7 +1305,7 @@ async function process30DayRequest(
       if (takeScreenshots) {
         const screenshotPath = path.join(
           logDir,
-          `failure-30day-${request.playDate}-${Date.now()}.png`
+          `failure-14day-${request.playDate}-${Date.now()}.png`
         );
         await page.screenshot({ path: screenshotPath, fullPage: true });
       }
@@ -1328,7 +1328,7 @@ async function process30DayRequest(
       if (takeScreenshots) {
         const screenshotPath = path.join(
           logDir,
-          `booking-failure-30day-${request.playDate}-${Date.now()}.png`
+          `booking-failure-14day-${request.playDate}-${Date.now()}.png`
         );
         await page.screenshot({ path: screenshotPath, fullPage: true });
       }
@@ -1348,7 +1348,7 @@ async function process30DayRequest(
     if (takeScreenshots) {
       const screenshotPath = path.join(
         logDir,
-        `success-30day-${request.playDate}-${Date.now()}.png`
+        `success-14day-${request.playDate}-${Date.now()}.png`
       );
       await page.screenshot({ path: screenshotPath, fullPage: true });
     }
@@ -1371,14 +1371,14 @@ async function process30DayRequest(
   }
 }
 
-// Process a 3-day booking request (uses full page refresh approach)
-async function process3DayRequest(
+// Process a 1-day booking request (uses full page refresh approach)
+async function process1DayRequest(
   page: Page,
   request: BookingRequest
 ): Promise<{ message: string; success: boolean }> {
   try {
-    // For 3-day bookings, use aggressive retry logic with full page refreshes
-    const { slots, updatedFrame } = await findAvailableSlots3Day(
+    // For 1-day bookings, use aggressive retry logic with full page refreshes
+    const { slots, updatedFrame } = await findAvailableSlots1Day(
       page,
       request.timeRange,
       request.playDate
@@ -1387,7 +1387,7 @@ async function process3DayRequest(
       if (takeScreenshots) {
         const screenshotPath = path.join(
           logDir,
-          `failure-3day-${request.playDate}-${Date.now()}.png`
+          `failure-1day-${request.playDate}-${Date.now()}.png`
         );
         await page.screenshot({ path: screenshotPath, fullPage: true });
       }
@@ -1411,7 +1411,7 @@ async function process3DayRequest(
       if (takeScreenshots) {
         const screenshotPath = path.join(
           logDir,
-          `booking-failure-3day-${request.playDate}-${Date.now()}.png`
+          `booking-failure-1day-${request.playDate}-${Date.now()}.png`
         );
         await page.screenshot({ path: screenshotPath, fullPage: true });
       }
@@ -1431,7 +1431,7 @@ async function process3DayRequest(
     if (takeScreenshots) {
       const screenshotPath = path.join(
         logDir,
-        `success-3day-${request.playDate}-${Date.now()}.png`
+        `success-1day-${request.playDate}-${Date.now()}.png`
       );
       await page.screenshot({ path: screenshotPath, fullPage: true });
     }
@@ -1460,19 +1460,19 @@ async function processRequest(
   request: BookingRequest,
   isFirstRequest: boolean
 ): Promise<{ message: string; success: boolean }> {
-  const is3DayBooking = isWithinThreeDaysBooking(request.playDate);
+  const is1DayBooking = isWithin1DayBooking(request.playDate);
 
-  if (is3DayBooking) {
+  if (is1DayBooking) {
     log(
-      `Processing 3-day booking for ${request.playDate} (requires full page refresh)`
+      `Processing 1-day booking for ${request.playDate} (requires full page refresh)`
     );
-    return await process3DayRequest(page, request);
+    return await process1DayRequest(page, request);
   }
 
   log(
-    `Processing 30-day booking for ${request.playDate} (frame-based approach)`
+    `Processing 14-day booking for ${request.playDate} (frame-based approach)`
   );
-  return await process30DayRequest(page, request, isFirstRequest);
+  return await process14DayRequest(page, request, isFirstRequest);
 }
 
 // Main entry point
@@ -1496,9 +1496,9 @@ async function main(): Promise<void> {
   if (todayRequests.length > 0) {
     log("Processing order (furthest dates first for maximum competitiveness):");
     todayRequests.forEach((req) => {
-      const bookingType = isWithinThreeDaysBooking(req.playDate)
-        ? "3-day"
-        : "30-day";
+      const bookingType = isWithin1DayBooking(req.playDate)
+        ? "1-day"
+        : "14-day";
       log(
         `  - ${req.playDate} (${req.timeRange.start}-${req.timeRange.end}) [${bookingType}]`
       );
@@ -1542,12 +1542,12 @@ async function main(): Promise<void> {
     for (let i = 0; i < todayRequests.length; i++) {
       const request = todayRequests[i];
       const isFirstRequest = i === 0;
-      const is3DayBooking = isWithinThreeDaysBooking(request.playDate);
+      const is1DayBooking = isWithin1DayBooking(request.playDate);
 
       log(
         `Processing request ${i + 1}/${todayRequests.length}: ${
           request.playDate
-        } (${is3DayBooking ? "3-day" : "30-day"} booking)`
+        } (${is1DayBooking ? "1-day" : "14-day"} booking)`
       );
 
       const result = await processRequest(page, request, isFirstRequest);

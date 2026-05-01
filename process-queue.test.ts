@@ -48,21 +48,21 @@ const getTodayDate = (dateOverride?: string): string => {
 // Function under test - simplified version of filterTodayRequests
 const filterTodayRequests = (queueData: QueueData, todayOverride?: string): BookingRequest[] => {
   const today = todayOverride || getTodayDate()
-  const thirtyDaysFromToday = new Date(today)
-  thirtyDaysFromToday.setDate(thirtyDaysFromToday.getDate() + 30)
-  const thirtyDaysString = thirtyDaysFromToday.toISOString().split('T')[0]
-  
-  const threeDaysAfter = new Date(today)
-  threeDaysAfter.setDate(threeDaysAfter.getDate() + 3)
-  const threeDaysString = threeDaysAfter.toISOString().split('T')[0]
-  
+  const fourteenDaysFromToday = new Date(today)
+  fourteenDaysFromToday.setDate(fourteenDaysFromToday.getDate() + 14)
+  const fourteenDaysString = fourteenDaysFromToday.toISOString().split('T')[0]
+
+  const oneDayAfter = new Date(today)
+  oneDayAfter.setDate(oneDayAfter.getDate() + 1)
+  const oneDayString = oneDayAfter.toISOString().split('T')[0]
+
   const filteredRequests = queueData.bookingRequests.filter(request => {
     if (request.status !== 'pending') return false
-    const isExactly30Days = request.playDate === thirtyDaysString
-    const isWithin3Days = request.playDate >= today && request.playDate <= threeDaysString
-    return isExactly30Days || isWithin3Days
+    const isExactly14Days = request.playDate === fourteenDaysString
+    const isWithin1Day = request.playDate >= today && request.playDate <= oneDayString
+    return isExactly14Days || isWithin1Day
   })
-  
+
   return filteredRequests.sort((a, b) => b.playDate.localeCompare(a.playDate))
 }
 
@@ -79,12 +79,12 @@ const isTimeInRange = (timeStr: string, timeRange: TimeRange): boolean => {
   return slotTime >= startTime && slotTime <= endTime
 }
 
-const isWithinThreeDaysBooking = (playDate: string, todayOverride?: string): boolean => {
+const isWithin1DayBooking = (playDate: string, todayOverride?: string): boolean => {
   const today = todayOverride || getTodayDate()
-  const threeDaysAfter = new Date(today)
-  threeDaysAfter.setDate(threeDaysAfter.getDate() + 3)
-  const threeDaysString = threeDaysAfter.toISOString().split('T')[0]
-  return playDate >= today && playDate <= threeDaysString
+  const oneDayAfter = new Date(today)
+  oneDayAfter.setDate(oneDayAfter.getDate() + 1)
+  const oneDayString = oneDayAfter.toISOString().split('T')[0]
+  return playDate >= today && playDate <= oneDayString
 }
 
 // Function under test - ISO date string conversion
@@ -155,28 +155,28 @@ describe('Golf Booking System', () => {
         {
           id: '1',
           requestDate: '2025-06-10T12:00:00Z',
-          playDate: '2025-06-11', // 1 day from today (within 3 days)
+          playDate: '2025-06-10', // today (within 1-day window)
           timeRange: { start: '09:00', end: '11:00' },
           status: 'pending'
         },
         {
           id: '2',
           requestDate: '2025-06-10T12:00:00Z',
-          playDate: '2025-06-13', // 3 days from today (within 3 days)
+          playDate: '2025-06-11', // 1 day from today (within 1-day window)
           timeRange: { start: '09:00', end: '11:00' },
           status: 'pending'
         },
         {
           id: '3',
           requestDate: '2025-06-10T12:00:00Z',
-          playDate: '2025-07-10', // 30 days from today
+          playDate: '2025-06-24', // 14 days from today
           timeRange: { start: '09:00', end: '11:00' },
           status: 'pending'
         },
         {
           id: '4',
           requestDate: '2025-06-10T12:00:00Z',
-          playDate: '2025-06-15', // 5 days from today (outside both ranges)
+          playDate: '2025-06-15', // 5 days from today (outside both windows)
           timeRange: { start: '09:00', end: '11:00' },
           status: 'pending'
         },
@@ -191,7 +191,7 @@ describe('Golf Booking System', () => {
       processedRequests: []
     }
 
-    it('filters requests for 30-day and 3-day bookings only', () => {
+    it('filters requests for 14-day and 1-day bookings only', () => {
       const result = filterTodayRequests(mockQueueData, '2025-06-10')
       
       expect(result).toHaveLength(3)
@@ -207,9 +207,9 @@ describe('Golf Booking System', () => {
     it('sorts results by play date descending (furthest first)', () => {
       const result = filterTodayRequests(mockQueueData, '2025-06-10')
       
-      expect(result[0].playDate).toBe('2025-07-10') // 30-day booking first
-      expect(result[1].playDate).toBe('2025-06-13') // Then furthest 3-day
-      expect(result[2].playDate).toBe('2025-06-11') // Then closest 3-day
+      expect(result[0].playDate).toBe('2025-06-24') // 14-day booking first
+      expect(result[1].playDate).toBe('2025-06-11') // Then 1-day out
+      expect(result[2].playDate).toBe('2025-06-10') // Then today
     })
   })
 
@@ -233,25 +233,25 @@ describe('Golf Booking System', () => {
   })
 
   describe('Booking type determination', () => {
-    it('correctly identifies 3-day bookings', () => {
+    it('correctly identifies 1-day bookings', () => {
       const today = '2025-06-10'
-      
-      expect(isWithinThreeDaysBooking('2025-06-10', today)).toBe(true)  // Today
-      expect(isWithinThreeDaysBooking('2025-06-11', today)).toBe(true)  // Tomorrow
-      expect(isWithinThreeDaysBooking('2025-06-13', today)).toBe(true)  // 3 days
-      expect(isWithinThreeDaysBooking('2025-06-14', today)).toBe(false) // 4 days
-      expect(isWithinThreeDaysBooking('2025-06-09', today)).toBe(false) // Past
+
+      expect(isWithin1DayBooking('2025-06-10', today)).toBe(true)  // Today
+      expect(isWithin1DayBooking('2025-06-11', today)).toBe(true)  // Tomorrow
+      expect(isWithin1DayBooking('2025-06-12', today)).toBe(false) // 2 days
+      expect(isWithin1DayBooking('2025-06-13', today)).toBe(false) // 3 days
+      expect(isWithin1DayBooking('2025-06-09', today)).toBe(false) // Past
     })
   })
 
   describe('Date edge cases', () => {
-    it('handles month boundaries for 30-day bookings', () => {
+    it('handles month boundaries for 14-day bookings', () => {
       const queueData: QueueData = {
         bookingRequests: [
           {
             id: '1',
             requestDate: '2025-01-15T12:00:00Z',
-            playDate: '2025-02-14', // Exactly 30 days from Jan 15
+            playDate: '2025-01-29', // Exactly 14 days from Jan 15
             timeRange: { start: '09:00', end: '11:00' },
             status: 'pending'
           }
@@ -269,7 +269,7 @@ describe('Golf Booking System', () => {
           {
             id: '1',
             requestDate: '2025-12-02T12:00:00Z',
-            playDate: '2026-01-01', // 30 days from Dec 2
+            playDate: '2025-12-16', // 14 days from Dec 2
             timeRange: { start: '09:00', end: '11:00' },
             status: 'pending'
           }

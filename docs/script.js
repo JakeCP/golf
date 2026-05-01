@@ -16,14 +16,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const repoNameInput = document.getElementById('repoName');
     const globalLoader = document.getElementById('globalLoader');
     
-    // Set default date to 30 days from today
+    // Set default date to 14 days from today
     const today = new Date();
     const defaultDate = new Date(today);
-    defaultDate.setDate(today.getDate() + 30);
-    
-    // Set minimum date to 4 days from today
+    defaultDate.setDate(today.getDate() + 14);
+
+    // Set minimum date to 2 days from today
     const minDate = new Date(today);
-    minDate.setDate(today.getDate() + 4);
+    minDate.setDate(today.getDate() + 2);
     
     // Format date as YYYY-MM-DD for input[type="date"]
     const year = defaultDate.getFullYear();
