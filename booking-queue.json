@@ -1,5 +1,6 @@
 {
-  "bookingRequests": [
+  "bookingRequests": [],
+  "processedRequests": [
     {
       "id": "2026-05-04-53947",
       "requestDate": "2026-05-04T16:35:19.669Z",
@@ -8,10 +9,10 @@
         "start": "09:00",
         "end": "10:00"
       },
-      "status": "pending"
-    }
-  ],
-  "processedRequests": [
+      "status": "failed",
+      "processedDate": "2026-05-05T13:11:19.415Z",
+      "failureReason": "No available times"
+    },
     {
       "id": "2025-10-09-45792",
       "requestDate": "2025-10-09T02:01:10.953Z",
