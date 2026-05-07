@@ -1061,7 +1061,7 @@ async function completeBookingForm(frame: Frame, slotTime: string): Promise<"suc
   try {
     // Complete booking
     await frame.getByText("ADD BUDDIES & GROUPS").click();
-    await frame.getByText(/Test group \(\d+ people\)/i).click();
+    await frame.getByText(/Test group people \(\d+ people\)/i).click();
 
     // Click book now
     await frame.locator('a.btn.btn-primary:has-text("BOOK NOW")').click();
@@ -1524,18 +1524,12 @@ async function main(): Promise<void> {
     await setDateInSessionStorage(page, todayRequests[0].playDate);
     await performInitialLogin(page);
 
-    // Wait until 7:00 AM ET if scheduled run (do this AFTER login to maximize session time)
+    // Wait until 7:00 AM ET if scheduled run (do this AFTER login to maximize session time).
+    // Tee times become available at 7:00 AM ET, so we always target that hour regardless of
+    // when cron actually fires (GitHub Actions cron can be delayed by 30+ minutes).
     if (process.env.IS_SCHEDULED_RUN === "true") {
-      const nowInET = new Date(
-        new Date().toLocaleString("en-US", { timeZone: "America/New_York" })
-      );
-      let nextHour = nowInET.getHours() + 1;
-      if (nextHour === 24) {
-        // Handle midnight case
-        nextHour = 0;
-      }
-      log(`Sleeping until ${nextHour}:00 ET`);
-      await sleepUntilTimeInZone(nextHour, 0);
+      log(`Sleeping until 7:00 ET`);
+      await sleepUntilTimeInZone(7, 0);
     }
 
     // Process all requests using the same browser session
