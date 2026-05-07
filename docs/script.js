@@ -165,8 +165,13 @@ document.addEventListener('DOMContentLoaded', function() {
         const token = tokenInput.value;
         
         // Basic validation
-        if (!date || !startTime || !endTime || !token) {
-            showStatus('Please fill in all fields.', 'error');
+        const missing = [];
+        if (!date) missing.push('Date');
+        if (!startTime) missing.push('Start Time');
+        if (!endTime) missing.push('End Time');
+        if (!token) missing.push('Password');
+        if (missing.length) {
+            showStatus(`Please fill in: ${missing.join(', ')}.`, 'error');
             return;
         }
         
