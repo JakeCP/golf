@@ -2,7 +2,10 @@ name: Process Golf Booking Queue
 
 on:
   schedule:
-    - cron: '55 10 * * *'
+    # 10:00 UTC = 06:00 EDT / 05:00 EST. Script then sleeps until 7:00 AM ET.
+    # Earlier than strictly needed so GitHub Actions cron delays (often 15-45min)
+    # don't push us past the 7:00 AM ET booking window.
+    - cron: '0 10 * * *'
 
   workflow_dispatch:
 
