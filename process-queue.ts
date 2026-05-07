@@ -105,49 +105,6 @@ const getCurrentTimeET = (): string => {
   });
 };
 
-// Returns minutes until target time today in given zone (negative if already past).
-const minutesUntilTimeInZone = (
-  targetHour24: number,
-  targetMinute: number,
-  timeZoneIANA = "America/New_York"
-): number => {
-  const now = new Date();
-  const offsetParts = new Intl.DateTimeFormat("en-US", {
-    timeZone: timeZoneIANA,
-    timeZoneName: "longOffset",
-  }).formatToParts(now);
-  const offsetString = offsetParts.find((p) => p.type === "timeZoneName")?.value;
-  const offsetMatch = offsetString?.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
-  if (!offsetMatch) {
-    throw new Error(`Could not parse timezone offset for '${timeZoneIANA}'`);
-  }
-  const offsetSign = offsetMatch[1] === "+" ? 1 : -1;
-  const totalOffsetMinutes =
-    offsetSign *
-    (parseInt(offsetMatch[2], 10) * 60 +
-      (offsetMatch[3] ? parseInt(offsetMatch[3], 10) : 0));
-
-  const ymd = new Intl.DateTimeFormat("en-CA", {
-    timeZone: timeZoneIANA,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  })
-    .formatToParts(now)
-    .reduce<{ [key: string]: number }>((acc, part) => {
-      if (part.type !== "literal" && part.type !== "timeZoneName") {
-        acc[part.type] = parseInt(part.value, 10);
-      }
-      return acc;
-    }, {});
-
-  const target = new Date(
-    Date.UTC(ymd.year, ymd.month - 1, ymd.day, targetHour24, targetMinute, 0, 0)
-  );
-  target.setUTCMinutes(target.getUTCMinutes() - totalOffsetMinutes);
-  return (target.getTime() - now.getTime()) / 60_000;
-};
-
 // Sleep until specific time function
 const sleepUntilTimeInZone = async (
   targetHour24: number,
@@ -1534,26 +1491,6 @@ async function main(): Promise<void> {
   }
 
   log(`Found ${todayRequests.length} requests for today`);
-
-  // Bail out early if a scheduled run fires too far before 7:00 AM ET.
-  // We use two daily cron entries (one tuned for EDT, one for EST) so that we
-  // always have a ~10 min buffer year-round despite GitHub Actions cron being
-  // UTC-only. The "wrong season" cron will fire ~70 min before 7 AM ET — exit
-  // immediately in that case so we don't burn ~1 hour of Actions minutes.
-  if (process.env.IS_SCHEDULED_RUN === "true") {
-    const minutesUntil7 = minutesUntilTimeInZone(7, 0);
-    if (minutesUntil7 > 25) {
-      log(
-        `Skipping run: ${minutesUntil7.toFixed(
-          1
-        )} min until 7:00 ET (wrong-season cron). The other daily cron will handle it.`
-      );
-      setOutput("processed_count", "0");
-      setOutput("booking_status", "skipped");
-      setOutput("results", "Skipped: wrong-season cron fired too early.");
-      return;
-    }
-  }
 
   // Log the order we'll process them
   if (todayRequests.length > 0) {

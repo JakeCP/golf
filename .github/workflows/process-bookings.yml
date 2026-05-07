@@ -2,11 +2,11 @@ name: Process Golf Booking Queue
 
 on:
   schedule:
-    # We always want to run ~10 min before 7:00 AM ET. Cron is UTC-only so we
-    # need two entries to handle DST. The script bails out fast (<5s) when the
-    # wrong-season cron fires, and runs immediately if it starts after 7 AM ET.
-    - cron: '50 10 * * *'  # 06:50 EDT (used Mar-Nov; in EST this fires at 05:50 ET and bails out)
-    - cron: '50 11 * * *'  # 06:50 EST (used Nov-Mar; in EDT this fires at 07:50 ET, after the window)
+    # 10:50 UTC = 06:50 EDT. Script then sleeps 10 min until 7:00 AM ET, when
+    # tee times become available. Golf season is EDT-only, so no EST handling.
+    # If GitHub Actions cron is delayed past 7:00 AM ET, the script runs
+    # immediately rather than sleeping until tomorrow.
+    - cron: '50 10 * * *'
 
   workflow_dispatch:
 
