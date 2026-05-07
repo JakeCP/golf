@@ -116,10 +116,10 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // Set default date to tomorrow
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            document.getElementById('date').valueAsDate = tomorrow;
+            // Set default date to 2 weeks from today
+            const defaultDate = new Date();
+            defaultDate.setDate(defaultDate.getDate() + 14);
+            document.getElementById('date').valueAsDate = defaultDate;
             
             // Load saved token from localStorage if available
             const savedToken = localStorage.getItem('githubToken');
