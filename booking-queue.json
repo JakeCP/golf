@@ -21,16 +21,6 @@
       "status": "pending"
     },
     {
-      "id": "2026-05-07-99854",
-      "requestDate": "2026-05-07T13:01:36.617Z",
-      "playDate": "2026-05-22",
-      "timeRange": {
-        "start": "09:00",
-        "end": "10:00"
-      },
-      "status": "pending"
-    },
-    {
       "id": "2026-05-07-59916",
       "requestDate": "2026-05-07T13:15:34.539Z",
       "playDate": "2026-05-14",
@@ -42,6 +32,18 @@
     }
   ],
   "processedRequests": [
+    {
+      "id": "2026-05-07-99854",
+      "requestDate": "2026-05-07T13:01:36.617Z",
+      "playDate": "2026-05-22",
+      "timeRange": {
+        "start": "09:00",
+        "end": "10:00"
+      },
+      "status": "failed",
+      "processedDate": "2026-05-08T11:18:34.176Z",
+      "failureReason": "No available times"
+    },
     {
       "id": "2026-05-07-27933",
       "requestDate": "2026-05-07T13:23:39.250Z",
