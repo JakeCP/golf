@@ -1,0 +1,26 @@
+services:
+  - type: cron
+    name: golf-booking
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    # 10:50 UTC = 06:50 EDT. Script then sleeps until 7:00 AM ET. Render's
+    # cron is precise (not subject to the GitHub Actions queueing delays we
+    # were seeing), so a 10-min buffer is plenty.
+    schedule: "50 10 * * *"
+    envVars:
+      - key: GOLF_USERNAME
+        sync: false
+      - key: GOLF_PASSWORD
+        sync: false
+      - key: GOOGLE_AI_API_KEY
+        sync: false
+      - key: DISCORD_WEBHOOK_URL
+        sync: false
+      # PAT with `contents: write` scope on this repo. Used by entrypoint.sh
+      # to pull the queue at start and push updates at end.
+      - key: GITHUB_PUSH_TOKEN
+        sync: false
+      - key: GITHUB_REPO
+        value: JakeCP/golf
+      - key: GIT_BRANCH
+        value: main

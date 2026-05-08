@@ -67,7 +67,18 @@ const log = (message: string): void => {
   logStream.write(logMessage + "\n");
 };
 
+const runSummary = {
+  status: "unknown" as string,
+  processedCount: 0,
+  results: "",
+};
+
 const setOutput = (name: string, value: string) => {
+  if (name === "booking_status") runSummary.status = value;
+  else if (name === "processed_count")
+    runSummary.processedCount = parseInt(value, 10) || 0;
+  else if (name === "results") runSummary.results = value;
+
   const dest = process.env.GITHUB_OUTPUT;
   if (dest) {
     fs.appendFileSync(dest, `${name}<<EOF\n${value}\nEOF\n`);
@@ -75,6 +86,104 @@ const setOutput = (name: string, value: string) => {
     console.log(`${name}=${value}`);
   }
 };
+
+// POST the run summary (and any screenshots from logs/) to a Discord webhook.
+// Replaces the GitHub Actions `discord-webhook` step from the prior workflow.
+async function sendDiscordNotification(): Promise<void> {
+  const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+  if (!webhookUrl) {
+    log("DISCORD_WEBHOOK_URL not set; skipping Discord notification");
+    return;
+  }
+
+  const content = [
+    `**Booking run:** ${runSummary.status}`,
+    `Requests processed: ${runSummary.processedCount}`,
+    `---`,
+    runSummary.results || "(no detail)",
+  ].join("\n");
+
+  // Discord webhooks accept up to 10 attachments. Pull the most recent PNGs
+  // out of logs/ — these are screenshots written during this run by the
+  // various failure-path captures in process14DayRequest / process1DayRequest.
+  let attachments: { path: string; name: string }[] = [];
+  try {
+    if (fs.existsSync(logDir)) {
+      attachments = fs
+        .readdirSync(logDir)
+        .filter((f) => f.endsWith(".png"))
+        .map((f) => path.join(logDir, f))
+        .map((p) => ({ p, mtime: fs.statSync(p).mtimeMs }))
+        .sort((a, b) => b.mtime - a.mtime)
+        .slice(0, 10)
+        .map(({ p }) => ({ path: p, name: path.basename(p) }));
+    }
+  } catch (e) {
+    log(`Could not enumerate screenshots: ${e}`);
+  }
+
+  const boundary = `----GolfBookingBoundary${Date.now()}`;
+  const chunks: Buffer[] = [];
+  const append = (s: string | Buffer) =>
+    chunks.push(typeof s === "string" ? Buffer.from(s, "utf8") : s);
+
+  append(`--${boundary}\r\n`);
+  append(`Content-Disposition: form-data; name="payload_json"\r\n`);
+  append(`Content-Type: application/json\r\n\r\n`);
+  append(JSON.stringify({ content }));
+  append(`\r\n`);
+
+  attachments.forEach((a, i) => {
+    const data = fs.readFileSync(a.path);
+    append(`--${boundary}\r\n`);
+    append(
+      `Content-Disposition: form-data; name="files[${i}]"; filename="${a.name}"\r\n`
+    );
+    append(`Content-Type: image/png\r\n\r\n`);
+    append(data);
+    append(`\r\n`);
+  });
+
+  append(`--${boundary}--\r\n`);
+  const body = Buffer.concat(chunks);
+
+  const url = new URL(webhookUrl);
+  await new Promise<void>((resolve) => {
+    const req = https.request(
+      {
+        hostname: url.hostname,
+        path: url.pathname + url.search,
+        method: "POST",
+        headers: {
+          "Content-Type": `multipart/form-data; boundary=${boundary}`,
+          "Content-Length": body.length,
+        },
+      },
+      (res) => {
+        let resBody = "";
+        res.on("data", (c) => (resBody += c));
+        res.on("end", () => {
+          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            log(
+              `Discord notification sent (status ${res.statusCode}, ${attachments.length} attachments)`
+            );
+          } else {
+            log(
+              `Discord notification failed: status ${res.statusCode} body ${resBody.slice(0, 500)}`
+            );
+          }
+          resolve();
+        });
+      }
+    );
+    req.on("error", (err) => {
+      log(`Discord notification network error: ${err}`);
+      resolve();
+    });
+    req.write(body);
+    req.end();
+  });
+}
 
 // Date helpers
 const getTodayDate = (): string => {
@@ -1571,11 +1680,25 @@ async function main(): Promise<void> {
   logStream.end();
 }
 
-// Run the processor
-main().catch((error) => {
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  log(`FATAL ERROR: ${errorMessage}`);
-  log(error instanceof Error ? error.stack || "" : "");
-  logStream.end();
-  process.exit(1);
-});
+// Run the processor. Runs Discord notification regardless of outcome so
+// failures are still reported.
+main()
+  .catch((error) => {
+    const errorMessage =
+      error instanceof Error ? error.message : String(error);
+    log(`FATAL ERROR: ${errorMessage}`);
+    log(error instanceof Error ? error.stack || "" : "");
+    runSummary.status = "error";
+    if (!runSummary.results) {
+      runSummary.results = `Fatal error: ${errorMessage}`;
+    }
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    try {
+      await sendDiscordNotification();
+    } catch (e) {
+      log(`Failed to send Discord notification: ${e}`);
+    }
+    logStream.end();
+  });
