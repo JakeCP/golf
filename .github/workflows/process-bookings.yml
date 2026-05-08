@@ -2,13 +2,21 @@ name: Process Golf Booking Queue
 
 on:
   schedule:
-    # 10:50 UTC = 06:50 EDT. Script then sleeps 10 min until 7:00 AM ET, when
-    # tee times become available. Golf season is EDT-only, so no EST handling.
-    # If GitHub Actions cron is delayed past 7:00 AM ET, the script runs
-    # immediately rather than sleeping until tomorrow.
-    - cron: '50 10 * * *'
+    # 10:25 UTC = 06:25 EDT. Script then sleeps 35 min until 7:00 AM ET (the
+    # booking window). Larger buffer because GitHub Actions cron has been
+    # arriving 25-35 min late. If even this buffer is insufficient and we
+    # start past 7:20 AM ET, the script bails out instead of attempting
+    # hopeless bookings.
+    - cron: '25 10 * * *'
 
   workflow_dispatch:
+
+# Prevent overlapping runs (e.g. workflow_dispatch while scheduled run is
+# active). New runs queue rather than running concurrently; the queued run
+# will see no pending requests and exit fast.
+concurrency:
+  group: process-bookings
+  cancel-in-progress: false
 
 jobs:
   process-booking-queue:

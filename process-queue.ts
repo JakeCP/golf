@@ -1492,6 +1492,34 @@ async function main(): Promise<void> {
 
   log(`Found ${todayRequests.length} requests for today`);
 
+  // Bail out if a scheduled run starts too far past 7:00 AM ET. By then the
+  // popular tee times are already booked, so attempting the rest of the flow
+  // just burns Actions minutes for no benefit. (The cron is set to fire at
+  // 6:25 AM ET; this bail-out only triggers if Actions delays the run by
+  // 55+ minutes, which has happened.)
+  if (process.env.IS_SCHEDULED_RUN === "true") {
+    const etHHMM = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(new Date());
+    const [hStr, mStr] = etHHMM.split(":");
+    const minutesPast7 = (parseInt(hStr, 10) - 7) * 60 + parseInt(mStr, 10);
+    if (minutesPast7 > 20) {
+      log(
+        `Bailing out: scheduled run started ${minutesPast7} min past 7:00 AM ET (current ET time: ${etHHMM}). Booking window has likely closed.`
+      );
+      setOutput("processed_count", "0");
+      setOutput("booking_status", "skipped");
+      setOutput(
+        "results",
+        `Skipped: started ${minutesPast7} min past 7:00 AM ET due to GitHub Actions cron delay.`
+      );
+      return;
+    }
+  }
+
   // Log the order we'll process them
   if (todayRequests.length > 0) {
     log("Processing order (furthest dates first for maximum competitiveness):");
