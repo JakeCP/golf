@@ -1429,7 +1429,8 @@ async function process14DayRequest(
       };
     }
 
-    const { bookedSlot, lastError } = await attemptBooking(updatedFrame, slots);
+    const reversedSlots = slots.slice().reverse();
+    const { bookedSlot, lastError } = await attemptBooking(updatedFrame, reversedSlots);
     if (!bookedSlot) {
       request.status = "failed";
       request.processedDate = new Date().toISOString();
@@ -1510,8 +1511,7 @@ async function process1DayRequest(
         success: false,
       };
     }
-    const reversedSlots = slots.slice().reverse();
-    const { bookedSlot, lastError } = await attemptBooking(updatedFrame, reversedSlots);
+    const { bookedSlot, lastError } = await attemptBooking(updatedFrame, slots);
 
     if (!bookedSlot) {
       request.status = "failed";
