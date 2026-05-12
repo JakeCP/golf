@@ -1028,7 +1028,45 @@ export async function handleLockedPopup(
   }
 
   log(`WARNING: Could not close locked modal for ${slotTime}; subsequent slot attempts may misfire`);
+  await dumpLockedModalDiagnostics(frame, slotTime);
   return "locked-stuck";
+}
+
+// Capture the modal's outerHTML and a screenshot when dismissal fails so we
+// can see what we're up against next time (the close target is "CLOSE" text
+// but its element type/handler isn't known from the screenshot alone).
+async function dumpLockedModalDiagnostics(frame: Frame, slotTime: string): Promise<void> {
+  const stamp = `${slotTime.replace(/[^0-9a-zA-Z-]/g, "_")}-${Date.now()}`;
+
+  try {
+    const scope =
+      (await findLockedDialogScope(frame)) ||
+      (await findLockedDialogScope(frame.page()));
+    if (scope) {
+      const html = await scope.evaluate((el: Element) => el.outerHTML).catch(() => null);
+      if (html) {
+        const htmlPath = path.join(logDir, `locked-modal-${stamp}.html`);
+        fs.writeFileSync(htmlPath, html);
+        log(`Wrote locked-modal HTML to ${htmlPath}`);
+      } else {
+        log(`Locked modal scope found but outerHTML unavailable for ${slotTime}`);
+      }
+    } else {
+      log(`Locked modal already gone by the time diagnostics ran for ${slotTime}`);
+    }
+  } catch (e) {
+    log(`Locked modal HTML dump failed for ${slotTime}: ${e}`);
+  }
+
+  if (takeScreenshots) {
+    try {
+      const screenshotPath = path.join(logDir, `locked-modal-${stamp}.png`);
+      await frame.page().screenshot({ path: screenshotPath, fullPage: true });
+      log(`Wrote locked-modal screenshot to ${screenshotPath}`);
+    } catch (e) {
+      log(`Locked modal screenshot failed for ${slotTime}: ${e}`);
+    }
+  }
 }
 
 function pageOf(ctx: Page | Frame): Page {
