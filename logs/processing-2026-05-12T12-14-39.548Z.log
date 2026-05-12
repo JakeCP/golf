@@ -1,0 +1,3 @@
+[2026-05-12T12:14:39.549Z] Starting booking queue processing
+[2026-05-12T12:14:39.574Z] No booking requests for today
+[2026-05-12T12:14:39.574Z] DISCORD_WEBHOOK_URL not set; skipping Discord notification
