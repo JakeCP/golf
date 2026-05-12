@@ -11,16 +11,6 @@
       "status": "pending"
     },
     {
-      "id": "2026-05-11-83460",
-      "requestDate": "2026-05-11T12:17:50.428Z",
-      "playDate": "2026-06-02",
-      "timeRange": {
-        "start": "11:00",
-        "end": "12:00"
-      },
-      "status": "pending"
-    },
-    {
       "id": "2026-05-11-51469",
       "requestDate": "2026-05-11T12:18:25.150Z",
       "playDate": "2026-06-08",
