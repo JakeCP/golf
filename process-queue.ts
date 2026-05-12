@@ -1015,7 +1015,7 @@ Answer with exactly one word: AVAILABLE, BOOKED, PENDING, EVENT, MAINTENANCE, or
 export async function handleLockedPopup(
   frame: Frame,
   slotTime: string
-): Promise<"locked"> {
+): Promise<"locked" | "locked-stuck"> {
   log(`Time slot ${slotTime} is locked by another user`);
 
   const closed =
@@ -1024,27 +1024,53 @@ export async function handleLockedPopup(
 
   if (closed) {
     log(`Closed locked modal for ${slotTime}`);
-  } else {
-    log(`Could not close locked modal for ${slotTime} (continuing)`);
+    return "locked";
   }
-  return "locked";
+
+  log(`WARNING: Could not close locked modal for ${slotTime}; subsequent slot attempts may misfire`);
+  return "locked-stuck";
 }
 
-async function tryDismissIn(ctx: Page | Frame): Promise<boolean> {
+function pageOf(ctx: Page | Frame): Page {
+  // Frame has .page(); Page doesn't. Use that to distinguish at runtime
+  // instead of `'keyboard' in (ctx as Page)` which depended on the
+  // accessor being on the prototype.
+  return typeof (ctx as Frame).page === 'function' ? (ctx as Frame).page() : (ctx as Page);
+}
+
+// Locate the locked-modal container. Prefer a real role=dialog; fall back to
+// the nearest modal-like ancestor of the heading text so candidate searches
+// don't sweep the whole page (which on this site contains other "Close"
+// targets that would otherwise match).
+async function findLockedDialogScope(ctx: Page | Frame): Promise<Locator | null> {
   const dialogName = /Time Cannot be Locked/i;
 
-  // Wait briefly for the dialog/text to render (handles animations)
-  const dialog = ctx.getByRole('dialog', { name: dialogName });
-  const appeared =
-    (await dialog.waitFor({ state: 'visible', timeout: 2000 }).then(() => true).catch(() => false)) ||
-    (await ctx.getByText(dialogName).first().waitFor({ state: 'visible', timeout: 2000 }).then(() => true).catch(() => false));
+  const roleDialog = ctx.getByRole('dialog', { name: dialogName });
+  if (await roleDialog.waitFor({ state: 'visible', timeout: 2000 }).then(() => true).catch(() => false)) {
+    return roleDialog.first();
+  }
 
-  if (!appeared) return false;
+  const heading = ctx.getByText(dialogName).first();
+  if (!(await heading.waitFor({ state: 'visible', timeout: 2000 }).then(() => true).catch(() => false))) {
+    return null;
+  }
 
-  // Scope searches to the dialog if Playwright can see it
-  const scope: Locator | Page | Frame = (await dialog.count()) ? dialog : ctx;
+  const modalAncestor = heading.locator(
+    'xpath=ancestor::*[self::dialog or @role="dialog" or contains(@class, "modal") or contains(@class, "dialog") or contains(@class, "popup")][1]'
+  );
+  if (await modalAncestor.count().catch(() => 0)) return modalAncestor.first();
 
-  // Try common "close" targets in order
+  return heading.locator('xpath=ancestor::*[self::div or self::section][1]').first();
+}
+
+export async function tryDismissIn(ctx: Page | Frame): Promise<boolean> {
+  const scope = await findLockedDialogScope(ctx);
+  if (!scope) return false;
+
+  const stillVisible = async (): Promise<boolean> => {
+    try { return await scope.isVisible(); } catch { return false; }
+  };
+
   const candidates: Locator[] = [
     scope.getByRole('button', { name: /^close$/i }),
     scope.getByRole('link',   { name: /^close$/i }),
@@ -1053,23 +1079,24 @@ async function tryDismissIn(ctx: Page | Frame): Promise<boolean> {
   ];
 
   for (const c of candidates) {
-    if (await c.count()) {
-      try {
-        await c.first().click({ timeout: 1500 });
-        await dialog.waitFor({ state: 'hidden', timeout: 2000 }).catch(() => {});
-        return true;
-      } catch { /* try next candidate */ }
+    if (!(await c.count().catch(() => 0))) continue;
+    try {
+      await c.first().click({ timeout: 1500 });
+    } catch {
+      continue;
     }
+    await scope.waitFor({ state: 'hidden', timeout: 2000 }).catch(() => {});
+    if (!(await stillVisible())) return true;
+    // The click landed but the dialog is still up — try the next candidate.
   }
 
-  // Fallback: ESC often dismisses modals
   try {
-    ('keyboard' in (ctx as Page) ? (ctx as Page) : (ctx as Frame).page()).keyboard.press('Escape');
-    await dialog.waitFor({ state: 'hidden', timeout: 1500 }).catch(() => {});
-    return true;
+    await pageOf(ctx).keyboard.press('Escape');
   } catch {
     return false;
   }
+  await scope.waitFor({ state: 'hidden', timeout: 1500 }).catch(() => {});
+  return !(await stillVisible());
 }
 
 
@@ -1184,11 +1211,13 @@ async function completeBookingForm(frame: Frame, slotTime: string): Promise<"suc
   }
 }
 
-// Book slot - returns 'success', 'locked', or 'error'
+// Book slot - returns 'success', 'locked', 'locked-stuck', or 'error'.
+// 'locked-stuck' means the locked modal appeared but couldn't be dismissed; the
+// caller should stop trying other slots since the modal will keep intercepting.
 async function bookSlot(
   frame: Frame,
   slot: Slot
-): Promise<"success" | "locked" | "error"> {
+): Promise<"success" | "locked" | "locked-stuck" | "error"> {
   try {
     // Wait for any loaders to disappear before clicking
     log("Waiting for loader to disappear before booking...");
@@ -1370,6 +1399,14 @@ async function attemptBooking(
       log(`Slot ${slot.time} locked, trying next slot...`);
       lastError = "Time slot locked by another user";
       continue;
+    }
+
+    if (result === "locked-stuck") {
+      // The locked modal is still on screen; remaining slot clicks will hit it
+      // and re-trigger the same path, falsely reporting every slot as locked.
+      log(`Slot ${slot.time} locked and modal could not be dismissed; aborting remaining attempts`);
+      lastError = "Locked modal could not be dismissed";
+      break;
     }
 
     log(`Error booking ${slot.time}, trying next slot...`);
@@ -1681,24 +1718,27 @@ async function main(): Promise<void> {
 }
 
 // Run the processor. Runs Discord notification regardless of outcome so
-// failures are still reported.
-main()
-  .catch((error) => {
-    const errorMessage =
-      error instanceof Error ? error.message : String(error);
-    log(`FATAL ERROR: ${errorMessage}`);
-    log(error instanceof Error ? error.stack || "" : "");
-    runSummary.status = "error";
-    if (!runSummary.results) {
-      runSummary.results = `Fatal error: ${errorMessage}`;
-    }
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    try {
-      await sendDiscordNotification();
-    } catch (e) {
-      log(`Failed to send Discord notification: ${e}`);
-    }
-    logStream.end();
-  });
+// failures are still reported. Guarded so the file can be imported from tests
+// (e.g. tests/playwright/locked-modal.spec.ts) without triggering a booking run.
+if (require.main === module) {
+  main()
+    .catch((error) => {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      log(`FATAL ERROR: ${errorMessage}`);
+      log(error instanceof Error ? error.stack || "" : "");
+      runSummary.status = "error";
+      if (!runSummary.results) {
+        runSummary.results = `Fatal error: ${errorMessage}`;
+      }
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      try {
+        await sendDiscordNotification();
+      } catch (e) {
+        log(`Failed to send Discord notification: ${e}`);
+      }
+      logStream.end();
+    });
+}

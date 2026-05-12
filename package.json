@@ -7,6 +7,7 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
+    "test:playwright": "playwright test",
     "test:e2e": "TEST_MODE=true ts-node process-queue.ts",
     "test:simulate": "TEST_MODE=true SIMULATE_BOOKING=true ts-node process-queue.ts",
     "test:visual": "TEST_MODE=true HEADLESS=false ts-node process-queue.ts",
