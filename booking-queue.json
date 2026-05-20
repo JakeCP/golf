@@ -39,7 +39,9 @@
         "end": "12:30"
       },
       "status": "pending"
-    },
+    }
+  ],
+  "processedRequests": [
     {
       "id": "2026-05-20-24603",
       "requestDate": "2026-05-20T11:51:45.469Z",
@@ -48,10 +50,10 @@
         "start": "09:50",
         "end": "12:00"
       },
-      "status": "pending"
-    }
-  ],
-  "processedRequests": [
+      "status": "success",
+      "processedDate": "2026-05-20T11:53:18.827Z",
+      "bookedTime": "10:50"
+    },
     {
       "id": "2026-05-18-88594",
       "requestDate": "2026-05-18T14:03:16.119Z",
