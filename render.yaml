@@ -3,6 +3,13 @@ services:
     name: golf-booking
     runtime: docker
     dockerfilePath: ./Dockerfile
+    # Skip redeploys for booking activity. entrypoint.sh commits booking-queue.json
+    # back to the repo on every run; without this filter each booking push would
+    # trigger a fresh deploy. A deploy still happens for any commit that touches
+    # other files (Dockerfile, process-queue.ts, render.yaml, etc.).
+    buildFilter:
+      ignoredPaths:
+        - booking-queue.json
     # 10:50 UTC = 06:50 EDT. Script then sleeps until 7:00 AM ET. Render's
     # cron is precise (not subject to the GitHub Actions queueing delays we
     # were seeing), so a 10-min buffer is plenty.
