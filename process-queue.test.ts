@@ -98,8 +98,7 @@ const getFullIsoDateString = (dateStr: string): string => {
 type Slot = { time: string; id: string }
 
 const sortSlotsByTime = (slots: Slot[]): Slot[] => {
-  // Sort by time, prefer later times (same logic as line 510 in process-queue.ts)
-  return slots.sort((a, b) => b.time.localeCompare(a.time))
+  return slots.sort((a, b) => a.time.localeCompare(b.time))
 }
 
 // Function under test - simulate the time slot filtering logic from the browser
@@ -291,7 +290,7 @@ describe('Golf Booking System', () => {
   })
 
   describe('Slot sorting and selection', () => {
-    it('sorts slots by time descending (prefers later times)', () => {
+    it('sorts slots by time ascending (prefers earlier times)', () => {
       const slots: Slot[] = [
         { time: '09:00', id: 'slot1' },
         { time: '11:30', id: 'slot2' },
@@ -300,8 +299,8 @@ describe('Golf Booking System', () => {
       ]
 
       const sorted = sortSlotsByTime([...slots])
-      
-      expect(sorted.map(s => s.time)).toEqual(['11:30', '10:15', '09:45', '09:00'])
+
+      expect(sorted.map(s => s.time)).toEqual(['09:00', '09:45', '10:15', '11:30'])
     })
 
     it('handles identical times consistently', () => {
@@ -312,10 +311,10 @@ describe('Golf Booking System', () => {
       ]
 
       const sorted = sortSlotsByTime([...slots])
-      
-      expect(sorted[0].time).toBe('10:00')
+
+      expect(sorted[0].time).toBe('09:00')
       expect(sorted[1].time).toBe('10:00')
-      expect(sorted[2].time).toBe('09:00')
+      expect(sorted[2].time).toBe('10:00')
     })
   })
 
@@ -343,7 +342,7 @@ describe('Golf Booking System', () => {
       const result = filterAvailableSlots(timeRange, mockSlots)
       
       const times = result.map(s => s.time)
-      expect(times).toEqual(['10:30', '09:15']) // Sorted desc, within range
+      expect(times).toEqual(['09:15', '10:30']) // Sorted asc, within range
     })
 
     it('parses AM/PM times correctly', () => {
@@ -358,7 +357,7 @@ describe('Golf Booking System', () => {
       const result = filterAvailableSlots(timeRange, amPmSlots)
       
       const times = result.map(s => s.time)
-      expect(times).toEqual(['23:30', '13:00', '12:30', '00:00'])
+      expect(times).toEqual(['00:00', '12:30', '13:00', '23:30'])
     })
 
     it('handles edge cases in time parsing', () => {
@@ -373,7 +372,7 @@ describe('Golf Booking System', () => {
       const result = filterAvailableSlots(timeRange, edgeCaseSlots)
       
       const times = result.map(s => s.time)
-      expect(times).toEqual(['12:15', '12:00', '00:15', '00:00'])
+      expect(times).toEqual(['00:00', '00:15', '12:00', '12:15'])
     })
   })
 
