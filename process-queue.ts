@@ -596,7 +596,7 @@ async function findAvailableSlots14Day(
 
     if (pageState === "ready") {
       const slots = await findAvailableSlots(frame, timeRange);
-      
+
       // Log the available slots found
       if (slots.length > 0) {
         const slotTimes = slots.map(slot => slot.time).join(", ");
@@ -900,8 +900,7 @@ async function findAvailableSlots(
         slots.push({ time: formattedTime, id: uniqueId });
       }
 
-      // Sort by time, prefer later times
-      return slots.sort((a, b) => b.time.localeCompare(a.time));
+      return slots.sort((a, b) => a.time.localeCompare(b.time));
     },
     { start: timeRange.start, end: timeRange.end }
   );
