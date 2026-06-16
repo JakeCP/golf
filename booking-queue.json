@@ -11,16 +11,6 @@
       "status": "pending"
     },
     {
-      "id": "2026-06-04-48655",
-      "requestDate": "2026-06-04T02:23:30.609Z",
-      "playDate": "2026-06-30",
-      "timeRange": {
-        "start": "09:00",
-        "end": "11:40"
-      },
-      "status": "pending"
-    },
-    {
       "id": "2026-06-04-75879",
       "requestDate": "2026-06-04T02:24:11.161Z",
       "playDate": "2026-07-07",
@@ -62,6 +52,18 @@
     }
   ],
   "processedRequests": [
+    {
+      "id": "2026-06-04-48655",
+      "requestDate": "2026-06-04T02:23:30.609Z",
+      "playDate": "2026-06-30",
+      "timeRange": {
+        "start": "09:00",
+        "end": "11:40"
+      },
+      "status": "success",
+      "processedDate": "2026-06-16T11:00:05.793Z",
+      "bookedTime": "09:00"
+    },
     {
       "id": "2026-06-15-71097",
       "requestDate": "2026-06-15T01:25:22.846Z",
