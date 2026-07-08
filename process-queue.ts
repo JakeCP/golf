@@ -1011,62 +1011,117 @@ Answer with exactly one word: AVAILABLE, BOOKED, PENDING, EVENT, MAINTENANCE, or
 }
 
 
+const LOCK_MODAL_TEXT = /Time Cannot be Locked/i;
+
 export async function handleLockedPopup(
   frame: Frame,
   slotTime: string
 ): Promise<"locked"> {
+  const startedAt = Date.now();
   log(`Time slot ${slotTime} is locked by another user`);
 
-  const closed =
-    (await tryDismissIn(frame)) ||               // 1) inside the frame
-    (await tryDismissIn(frame.page()));          // 2) fall back to top page
+  // 1) Try to dismiss inside the frame, then 2) fall back to the top page.
+  // Each attempt only reports success after confirming the modal is actually gone.
+  let closed = await tryDismissIn(frame, slotTime, "frame");
+  if (!closed) {
+    closed = await tryDismissIn(frame.page(), slotTime, "page");
+  }
 
-  if (closed) {
-    log(`Closed locked modal for ${slotTime}`);
+  // Verify the outcome independently of how (or whether) we clicked anything.
+  const stillPresent = await lockModalVisible(frame);
+  const elapsedMs = Date.now() - startedAt;
+
+  if (closed && !stillPresent) {
+    log(`Closed locked modal for ${slotTime} in ${elapsedMs}ms`);
+  } else if (!stillPresent) {
+    // Modal is gone even though no dismiss action reported success (e.g. it
+    // auto-closed or navigated). Safe to continue, but worth flagging.
+    log(`Locked modal for ${slotTime} is gone after ${elapsedMs}ms (no explicit close confirmed)`);
   } else {
-    log(`Could not close locked modal for ${slotTime} (continuing)`);
+    // The modal is STILL on screen. The next slot's click is a raw JS
+    // dispatchEvent that ignores overlays, so it may fire underneath a stale
+    // modal. Log loudly so this is visible in the run logs.
+    log(`WARNING: locked modal for ${slotTime} still visible after ${elapsedMs}ms; next slot click may land under a stale modal`);
   }
   return "locked";
 }
 
-async function tryDismissIn(ctx: Page | Frame): Promise<boolean> {
-  const dialogName = /Time Cannot be Locked/i;
+// Returns true only after confirming the lock modal text is no longer visible.
+async function lockModalHidden(ctx: Page | Frame, timeout: number): Promise<boolean> {
+  return ctx
+    .getByText(LOCK_MODAL_TEXT)
+    .first()
+    .waitFor({ state: "hidden", timeout })
+    .then(() => true)
+    .catch(() => false);
+}
 
-  // Wait briefly for the dialog/text to render (handles animations)
-  const dialog = ctx.getByRole('dialog', { name: dialogName });
-  const appeared =
-    (await dialog.waitFor({ state: 'visible', timeout: 2000 }).then(() => true).catch(() => false)) ||
-    (await ctx.getByText(dialogName).first().waitFor({ state: 'visible', timeout: 2000 }).then(() => true).catch(() => false));
+async function lockModalVisible(ctx: Page | Frame): Promise<boolean> {
+  return ctx
+    .getByText(LOCK_MODAL_TEXT)
+    .first()
+    .isVisible()
+    .catch(() => false);
+}
 
-  if (!appeared) return false;
+async function tryDismissIn(
+  ctx: Page | Frame,
+  slotTime: string,
+  where: string
+): Promise<boolean> {
+  // The caller already confirmed the lock text is visible, so skip the old
+  // 2s "wait for it to appear" step and just locate it. Prefer an ARIA dialog
+  // if the site exposes one, otherwise scope to the whole context.
+  const dialog = ctx.getByRole("dialog", { name: LOCK_MODAL_TEXT });
+  const hasRoleDialog = (await dialog.count().catch(() => 0)) > 0;
+  const textVisible = await lockModalVisible(ctx);
 
-  // Scope searches to the dialog if Playwright can see it
-  const scope: Locator | Page | Frame = (await dialog.count()) ? dialog : ctx;
+  if (!hasRoleDialog && !textVisible) {
+    log(`No lock modal found in ${where} for ${slotTime}`);
+    return false;
+  }
 
-  // Try common "close" targets in order
-  const candidates: Locator[] = [
-    scope.getByRole('button', { name: /^close$/i }),
-    scope.getByRole('link',   { name: /^close$/i }),
-    scope.getByText(/^close$/i),
-    scope.locator('[aria-label="Close"], .ui-dialog-titlebar-close, .close, [data-dismiss="modal"], [mat-dialog-close]')
+  log(`Lock modal located in ${where} for ${slotTime} (role=dialog: ${hasRoleDialog})`);
+  const scope: Locator | Page | Frame = hasRoleDialog ? dialog : ctx;
+
+  // Try common "close" targets in order.
+  const candidates: Array<{ name: string; locator: Locator }> = [
+    { name: "button:close", locator: scope.getByRole("button", { name: /^close$/i }) },
+    { name: "link:close", locator: scope.getByRole("link", { name: /^close$/i }) },
+    { name: "text:close", locator: scope.getByText(/^close$/i) },
+    {
+      name: "selector:close",
+      locator: scope.locator(
+        '[aria-label="Close"], .ui-dialog-titlebar-close, .close, [data-dismiss="modal"], [mat-dialog-close]'
+      ),
+    },
   ];
 
   for (const c of candidates) {
-    if (await c.count()) {
-      try {
-        await c.first().click({ timeout: 1500 });
-        await dialog.waitFor({ state: 'hidden', timeout: 2000 }).catch(() => {});
-        return true;
-      } catch { /* try next candidate */ }
+    const count = await c.locator.count().catch(() => 0);
+    if (!count) continue;
+    try {
+      const clickStart = Date.now();
+      await c.locator.first().click({ timeout: 1500 });
+      const hidden = await lockModalHidden(ctx, 2000);
+      log(
+        `Clicked '${c.name}' for ${slotTime} in ${where} (${Date.now() - clickStart}ms); modal hidden: ${hidden}`
+      );
+      if (hidden) return true;
+    } catch (err) {
+      log(`Close target '${c.name}' failed for ${slotTime} in ${where}: ${err}`);
     }
   }
 
-  // Fallback: ESC often dismisses modals
+  // Fallback: ESC often dismisses modals.
   try {
-    ('keyboard' in (ctx as Page) ? (ctx as Page) : (ctx as Frame).page()).keyboard.press('Escape');
-    await dialog.waitFor({ state: 'hidden', timeout: 1500 }).catch(() => {});
-    return true;
-  } catch {
+    const page = "keyboard" in (ctx as Page) ? (ctx as Page) : (ctx as Frame).page();
+    await page.keyboard.press("Escape");
+    const hidden = await lockModalHidden(ctx, 1500);
+    log(`Sent ESC to dismiss lock modal for ${slotTime} in ${where}; modal hidden: ${hidden}`);
+    return hidden;
+  } catch (err) {
+    log(`ESC dismiss failed for ${slotTime} in ${where}: ${err}`);
     return false;
   }
 }
@@ -1192,7 +1247,18 @@ async function bookSlot(
     // Wait for any loaders to disappear before clicking
     log("Waiting for loader to disappear before booking...");
     await waitForLoader(frame, 'hidden', 5000);
-        
+
+    // Guard against a stale lock modal left over from the previous slot. The
+    // click below is a raw JS dispatchEvent that ignores overlays, so if a
+    // modal is still up we'd click "through" it without booking anything.
+    if (await lockModalVisible(frame)) {
+      log(`Stale lock modal detected before booking ${slot.time}; attempting to clear it first`);
+      await handleLockedPopup(frame, slot.time);
+      if (await lockModalVisible(frame)) {
+        log(`WARNING: could not clear stale lock modal before booking ${slot.time}; proceeding anyway`);
+      }
+    }
+
     // Click the time slot - try dispatch first, then force click for better error info
     const dispatchSuccess = await clickWithDispatch(frame, `[data-playwright-id="${slot.id}"]`, slot.time);
     
