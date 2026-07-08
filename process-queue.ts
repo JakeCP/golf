@@ -474,10 +474,44 @@ async function navigateToBookingPage(
 ): Promise<void> {
   log(`Navigating to booking page for ${playDate}`);
   await setDateInSessionStorage(page, playDate);
-  await page.goto(
-    "https://lorabaygolf.clubhouseonline-e3.com/TeeTimes/TeeSheet.aspx"
-  );
-  await page.waitForLoadState("networkidle");
+
+  const url =
+    "https://lorabaygolf.clubhouseonline-e3.com/TeeTimes/TeeSheet.aspx";
+  const maxAttempts = 2;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      // Resolve goto on "domcontentloaded" instead of the default "load".
+      // Waiting for full "load" (and the old waitForLoadState("networkidle")
+      // that followed) is unreliable on this third-party site during the
+      // booking window: long-lived analytics/XHR requests keep the network
+      // busy, so the old networkidle wait hit its 30s default timeout and threw,
+      // aborting the entire request.
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
+
+      // The booking iframe attaching is the real "page is usable" signal.
+      // Downstream getBookingFrame + waitForDateDataToLoad still gate on the
+      // tee-time content actually rendering, so this only needs the shell.
+      await page.waitForSelector("iframe#module", {
+        state: "attached",
+        timeout: 15000,
+      });
+      return;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (attempt < maxAttempts) {
+        log(
+          `WARNING: navigation to booking page failed (attempt ${attempt}/${maxAttempts}): ${message}; retrying`
+        );
+        continue;
+      }
+      // Don't abort the request on a slow/never-idle load: fall through and let
+      // the caller's bounded readiness checks (and retry loop) take over.
+      log(
+        `WARNING: navigation to booking page did not fully settle after ${maxAttempts} attempts: ${message}; continuing with downstream readiness checks`
+      );
+    }
+  }
 }
 
 async function getBookingFrame(page: Page): Promise<Frame> {
