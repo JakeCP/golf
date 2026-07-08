@@ -19,7 +19,9 @@
         "end": "12:30"
       },
       "status": "pending"
-    },
+    }
+  ],
+  "processedRequests": [
     {
       "id": "2026-07-07-85456",
       "requestDate": "2026-07-07T23:32:23.450Z",
@@ -28,10 +30,10 @@
         "start": "10:00",
         "end": "11:00"
       },
-      "status": "pending"
-    }
-  ],
-  "processedRequests": [
+      "status": "error",
+      "processedDate": "2026-07-08T11:00:34.407Z",
+      "failureReason": "page.waitForLoadState: Timeout 30000ms exceeded."
+    },
     {
       "id": "2026-06-29-5746",
       "requestDate": "2026-06-29T09:47:33.679Z",
