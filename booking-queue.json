@@ -1,16 +1,6 @@
 {
   "bookingRequests": [
     {
-      "id": "2026-07-08-85446",
-      "requestDate": "2026-07-08T19:08:53.007Z",
-      "playDate": "2026-07-28",
-      "timeRange": {
-        "start": "11:30",
-        "end": "12:30"
-      },
-      "status": "pending"
-    },
-    {
       "id": "2026-07-08-40577",
       "requestDate": "2026-07-08T19:09:37.226Z",
       "playDate": "2026-08-03",
@@ -52,6 +42,18 @@
     }
   ],
   "processedRequests": [
+    {
+      "id": "2026-07-08-85446",
+      "requestDate": "2026-07-08T19:08:53.007Z",
+      "playDate": "2026-07-28",
+      "timeRange": {
+        "start": "11:30",
+        "end": "12:30"
+      },
+      "status": "failed",
+      "processedDate": "2026-07-14T11:00:43.478Z",
+      "failureReason": "Time slot locked by another user"
+    },
     {
       "id": "2026-06-29-39958",
       "requestDate": "2026-06-29T09:49:05.629Z",
