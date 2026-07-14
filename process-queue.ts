@@ -1134,17 +1134,30 @@ async function tryDismissIn(
   for (const c of candidates) {
     const count = await c.locator.count().catch(() => 0);
     if (!count) continue;
+    const target = c.locator.first();
+    const clickStart = Date.now();
+    let clickedVia: string | null = null;
     try {
-      const clickStart = Date.now();
-      await c.locator.first().click({ timeout: 1500 });
-      const hidden = await lockModalHidden(ctx, 2000);
-      log(
-        `Clicked '${c.name}' for ${slotTime} in ${where} (${Date.now() - clickStart}ms); modal hidden: ${hidden}`
-      );
-      if (hidden) return true;
+      await target.click({ timeout: 1500 });
+      clickedVia = "click";
     } catch (err) {
       log(`Close target '${c.name}' failed for ${slotTime} in ${where}: ${err}`);
+      // The modal's CLOSE anchor can sit outside the viewport (the booking
+      // iframe is taller than the page), which makes a real click impossible.
+      // A synthetic DOM click still fires the Angular ng-click handler.
+      try {
+        await target.dispatchEvent("click");
+        clickedVia = "dispatchEvent";
+      } catch (dispatchErr) {
+        log(`Synthetic click on '${c.name}' failed for ${slotTime} in ${where}: ${dispatchErr}`);
+      }
     }
+    if (!clickedVia) continue;
+    const hidden = await lockModalHidden(ctx, 2000);
+    log(
+      `Clicked '${c.name}' via ${clickedVia} for ${slotTime} in ${where} (${Date.now() - clickStart}ms); modal hidden: ${hidden}`
+    );
+    if (hidden) return true;
   }
 
   // Fallback: ESC often dismisses modals.
@@ -1721,7 +1734,9 @@ async function main(): Promise<void> {
     // Create browser and page once
     browser = await chromium.launch({ headless });
     const context = await browser.newContext({
-      viewport: { width: 1280, height: 720 },
+      // Tall viewport so modal controls rendered low in the booking iframe
+      // (e.g. the lock modal's CLOSE link) stay clickable.
+      viewport: { width: 1280, height: 1600 },
       userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
       timezoneId: "America/Toronto",
       locale: "en-CA",
