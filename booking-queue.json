@@ -49,16 +49,6 @@
         "end": "17:00"
       },
       "status": "pending"
-    },
-    {
-      "id": "2026-07-20-99887",
-      "requestDate": "2026-07-20T02:32:33.631Z",
-      "playDate": "2026-07-21",
-      "timeRange": {
-        "start": "16:00",
-        "end": "17:00"
-      },
-      "status": "pending"
     }
   ],
   "processedRequests": [
