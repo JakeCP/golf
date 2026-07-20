@@ -16,7 +16,7 @@ RUN npm ci
 # pins a different minor).
 RUN npx playwright install chromium
 
-COPY tsconfig.json process-queue.ts entrypoint.sh ./
+COPY tsconfig.json process-queue.ts entrypoint.sh merge-queue.js ./
 RUN chmod +x entrypoint.sh
 
 CMD ["./entrypoint.sh"]

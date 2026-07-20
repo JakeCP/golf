@@ -3,7 +3,6 @@ import * as path from "path";
 import { chromium, Page, Browser, Frame, Locator } from "@playwright/test";
 import { WriteStream } from "fs";
 import * as dotenv from "dotenv";
-import * as https from "https";
 
 dotenv.config();
 
@@ -73,6 +72,71 @@ const runSummary = {
   results: "",
 };
 
+// Shared with the watchdog so it can flush state and capture diagnostics if
+// the run has to be aborted. Set by main() as soon as each becomes available.
+let activePage: Page | null = null;
+let activeQueue: {
+  queueData: QueueData;
+  todayRequests: BookingRequest[];
+} | null = null;
+
+// Hard deadline for the entire run. Without one, a hung Playwright wait (or a
+// pathological retry loop — the 1-day retry path can exceed an hour worst
+// case) stalls the cron container indefinitely and no notification ever goes
+// out. On expiry: flush queue state, grab a screenshot, notify Discord, and
+// exit non-zero.
+const RUN_DEADLINE_MINUTES = parseInt(
+  process.env.RUN_DEADLINE_MINUTES || "45",
+  10
+);
+
+function startWatchdog(): NodeJS.Timeout {
+  const timer = setTimeout(async () => {
+    log(
+      `FATAL: run exceeded ${RUN_DEADLINE_MINUTES} minute deadline; aborting`
+    );
+    try {
+      if (activeQueue) {
+        persistQueue(activeQueue.queueData, activeQueue.todayRequests);
+        log("Watchdog: queue state flushed");
+      }
+    } catch (e) {
+      log(`Watchdog: failed to persist queue: ${e}`);
+    }
+    try {
+      if (activePage && takeScreenshots) {
+        const screenshotPath = path.join(
+          logDir,
+          `watchdog-timeout-${Date.now()}.png`
+        );
+        await Promise.race([
+          activePage.screenshot({ path: screenshotPath, fullPage: true }),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("screenshot timed out")), 10000)
+          ),
+        ]);
+      }
+    } catch (e) {
+      log(`Watchdog: failed to capture screenshot: ${e}`);
+    }
+    runSummary.status = "timeout";
+    if (!runSummary.results) {
+      runSummary.results = `Run aborted: exceeded ${RUN_DEADLINE_MINUTES} minute deadline.`;
+    }
+    try {
+      await sendDiscordNotification();
+    } catch (e) {
+      log(`Watchdog: Discord notification failed: ${e}`);
+    }
+    process.exit(1);
+  }, RUN_DEADLINE_MINUTES * 60 * 1000);
+
+  // Don't let the watchdog timer itself keep an otherwise-finished process
+  // alive.
+  timer.unref();
+  return timer;
+}
+
 const setOutput = (name: string, value: string) => {
   if (name === "booking_status") runSummary.status = value;
   else if (name === "processed_count")
@@ -96,12 +160,19 @@ async function sendDiscordNotification(): Promise<void> {
     return;
   }
 
-  const content = [
+  let content = [
     `**Booking run:** ${runSummary.status}`,
     `Requests processed: ${runSummary.processedCount}`,
     `---`,
     runSummary.results || "(no detail)",
   ].join("\n");
+
+  // Discord rejects messages over 2000 characters outright.
+  const MAX_CONTENT_LENGTH = 2000;
+  if (content.length > MAX_CONTENT_LENGTH) {
+    const suffix = "\n…(truncated)";
+    content = content.slice(0, MAX_CONTENT_LENGTH - suffix.length) + suffix;
+  }
 
   // Discord webhooks accept up to 10 attachments. Pull the most recent PNGs
   // out of logs/ — these are screenshots written during this run by the
@@ -122,67 +193,35 @@ async function sendDiscordNotification(): Promise<void> {
     log(`Could not enumerate screenshots: ${e}`);
   }
 
-  const boundary = `----GolfBookingBoundary${Date.now()}`;
-  const chunks: Buffer[] = [];
-  const append = (s: string | Buffer) =>
-    chunks.push(typeof s === "string" ? Buffer.from(s, "utf8") : s);
-
-  append(`--${boundary}\r\n`);
-  append(`Content-Disposition: form-data; name="payload_json"\r\n`);
-  append(`Content-Type: application/json\r\n\r\n`);
-  append(JSON.stringify({ content }));
-  append(`\r\n`);
-
+  const form = new FormData();
+  form.append("payload_json", JSON.stringify({ content }));
   attachments.forEach((a, i) => {
-    const data = fs.readFileSync(a.path);
-    append(`--${boundary}\r\n`);
-    append(
-      `Content-Disposition: form-data; name="files[${i}]"; filename="${a.name}"\r\n`
+    form.append(
+      `files[${i}]`,
+      new Blob([fs.readFileSync(a.path)], { type: "image/png" }),
+      a.name
     );
-    append(`Content-Type: image/png\r\n\r\n`);
-    append(data);
-    append(`\r\n`);
   });
 
-  append(`--${boundary}--\r\n`);
-  const body = Buffer.concat(chunks);
-
-  const url = new URL(webhookUrl);
-  await new Promise<void>((resolve) => {
-    const req = https.request(
-      {
-        hostname: url.hostname,
-        path: url.pathname + url.search,
-        method: "POST",
-        headers: {
-          "Content-Type": `multipart/form-data; boundary=${boundary}`,
-          "Content-Length": body.length,
-        },
-      },
-      (res) => {
-        let resBody = "";
-        res.on("data", (c) => (resBody += c));
-        res.on("end", () => {
-          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-            log(
-              `Discord notification sent (status ${res.statusCode}, ${attachments.length} attachments)`
-            );
-          } else {
-            log(
-              `Discord notification failed: status ${res.statusCode} body ${resBody.slice(0, 500)}`
-            );
-          }
-          resolve();
-        });
-      }
-    );
-    req.on("error", (err) => {
-      log(`Discord notification network error: ${err}`);
-      resolve();
+  try {
+    const res = await fetch(webhookUrl, {
+      method: "POST",
+      body: form,
+      signal: AbortSignal.timeout(15000),
     });
-    req.write(body);
-    req.end();
-  });
+    if (res.ok) {
+      log(
+        `Discord notification sent (status ${res.status}, ${attachments.length} attachments)`
+      );
+    } else {
+      const resBody = await res.text().catch(() => "");
+      log(
+        `Discord notification failed: status ${res.status} body ${resBody.slice(0, 500)}`
+      );
+    }
+  } catch (err) {
+    log(`Discord notification network error: ${err}`);
+  }
 }
 
 // Date helpers
@@ -383,6 +422,28 @@ async function initializeQueue(): Promise<QueueData> {
   return JSON.parse(fs.readFileSync(queueFilePath, "utf8"));
 }
 
+// Write current queue state to disk. Called after every processed request —
+// not just at end of run — so a crash partway through cannot lose statuses
+// that were already recorded. Requests whose status moved off "pending" are
+// migrated from bookingRequests to processedRequests (newest first).
+function persistQueue(
+  queueData: QueueData,
+  todayRequests: BookingRequest[]
+): void {
+  const processedNow = todayRequests.filter((r) => r.status !== "pending");
+  const processedIds = new Set(processedNow.map((r) => r.id));
+  const snapshot: QueueData = {
+    bookingRequests: queueData.bookingRequests.filter(
+      (r) => !processedIds.has(r.id)
+    ),
+    processedRequests: [
+      ...processedNow,
+      ...queueData.processedRequests.filter((r) => !processedIds.has(r.id)),
+    ],
+  };
+  fs.writeFileSync(queueFilePath, JSON.stringify(snapshot, null, 2));
+}
+
 function filterTodayRequests(queueData: QueueData): BookingRequest[] {
   const today = getTodayDate();
   const fourteenDaysFromToday = new Date(today);
@@ -457,14 +518,60 @@ async function performInitialLogin(page: Page): Promise<void> {
     }
   });
 
-  await page.goto(
-    "https://lorabaygolf.clubhouseonline-e3.com/TeeTimes/TeeSheet.aspx"
-  );
-  await page.getByPlaceholder("Username").fill(username);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
-  await page.waitForLoadState("networkidle");
-  log(`Logged in at ${getCurrentTimeET()}`);
+  const loginUrl =
+    "https://lorabaygolf.clubhouseonline-e3.com/TeeTimes/TeeSheet.aspx";
+  const maxAttempts = 2;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await page.goto(loginUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
+      await page.getByPlaceholder("Username").fill(username);
+      await page.getByPlaceholder("Password").fill(password);
+      await page.getByRole("button", { name: "Login" }).click();
+
+      // Verify login actually succeeded instead of assuming: the booking
+      // iframe only attaches for an authenticated session. Failing here (bad
+      // credentials, changed login form, CAPTCHA) surfaces immediately with a
+      // clear message rather than as a confusing failure at booking time.
+      await page.waitForSelector("iframe#module", {
+        state: "attached",
+        timeout: 20000,
+      });
+      log(`Logged in at ${getCurrentTimeET()}`);
+      return;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const loginFormStillVisible = await page
+        .getByPlaceholder("Username")
+        .isVisible()
+        .catch(() => false);
+      const detail = loginFormStillVisible
+        ? `login form still visible after submit — credentials may be wrong or the form has changed (${message})`
+        : message;
+
+      if (attempt < maxAttempts) {
+        log(
+          `WARNING: login attempt ${attempt}/${maxAttempts} failed: ${detail}; retrying`
+        );
+        continue;
+      }
+
+      if (takeScreenshots) {
+        try {
+          await page.screenshot({
+            path: path.join(logDir, `login-failure-${Date.now()}.png`),
+            fullPage: true,
+          });
+        } catch (screenshotErr) {
+          log(`Could not capture login failure screenshot: ${screenshotErr}`);
+        }
+      }
+      throw new Error(`Login failed after ${maxAttempts} attempts: ${detail}`);
+    }
+  }
 }
 
 // Navigate to booking page for subsequent requests
@@ -749,13 +856,26 @@ async function navigateAndCaptureApiResponse(
   let apiResult: APIResult = "timeout";
   const API_TIMEOUT_MS = 8000;
   
-  // Set up API response capture BEFORE navigation
+  // Set up API response capture BEFORE navigation. `finish` is the single
+  // cleanup path for both outcomes (matching response or timeout) so the
+  // listener is always detached — this function is called once per retry
+  // attempt, and leaked handlers from timed-out attempts would accumulate and
+  // let a stale attempt clobber `apiResult`.
   const responsePromise = new Promise<void>((resolve) => {
-    const timeout = setTimeout(resolve, API_TIMEOUT_MS);
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      page.off('response', responseHandler);
+      resolve();
+    };
+
+    const timeout = setTimeout(finish, API_TIMEOUT_MS);
 
     const responseHandler = async (response: any) => {
       const url = response.url();
-      if (url.includes('/api/v1/teetimes/GetAvailableTeeTimes/') && 
+      if (url.includes('/api/v1/teetimes/GetAvailableTeeTimes/') &&
           url.includes(playDate.replace(/-/g, ''))) {
         try {
           const responseData = await response.json();
@@ -763,9 +883,7 @@ async function navigateAndCaptureApiResponse(
         } catch (error) {
           log(`Failed to parse API response: ${error}`);
         } finally {
-          clearTimeout(timeout);
-          page.off('response', responseHandler);
-          resolve();
+          finish();
         }
       }
     };
@@ -986,58 +1104,34 @@ Answer with exactly one word: AVAILABLE, BOOKED, PENDING, EVENT, MAINTENANCE, or
       ],
     });
 
-    return new Promise((resolve) => {
-      const req = https.request(
-        {
-          hostname: "generativelanguage.googleapis.com",
-          path: `/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Content-Length": Buffer.byteLength(requestData),
-          },
-        },
-        (res) => {
-          let data = "";
-          res.on("data", (chunk) => (data += chunk));
-          res.on("end", () => {
-            try {
-              const response = JSON.parse(data);
-              const text = response.candidates?.[0]?.content?.parts?.[0]?.text
-                ?.trim()
-                .toUpperCase();
-              if (
-                [
-                  "AVAILABLE",
-                  "EVENT",
-                  "BOOKED",
-                  "PENDING",
-                  "MAINTENANCE",
-                  "UNCLEAR",
-                ].includes(text)
-              ) {
-                log(`🤖 AI detected: ${text}`);
-                resolve(text as any);
-              } else {
-                log(`🤖 AI response unclear: ${text}`);
-                resolve("UNCLEAR");
-              }
-            } catch (error) {
-              log(`🤖 AI API error: ${error}`);
-              resolve("UNCLEAR");
-            }
-          });
-        }
-      );
-
-      req.on("error", (error) => {
-        log(`🤖 AI request failed: ${error}`);
-        resolve("UNCLEAR");
-      });
-
-      req.write(requestData);
-      req.end();
-    });
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: requestData,
+        signal: AbortSignal.timeout(20000),
+      }
+    );
+    const response: any = await res.json();
+    const text = response.candidates?.[0]?.content?.parts?.[0]?.text
+      ?.trim()
+      .toUpperCase();
+    if (
+      [
+        "AVAILABLE",
+        "EVENT",
+        "BOOKED",
+        "PENDING",
+        "MAINTENANCE",
+        "UNCLEAR",
+      ].includes(text)
+    ) {
+      log(`🤖 AI detected: ${text}`);
+      return text;
+    }
+    log(`🤖 AI response unclear: ${text}`);
+    return "UNCLEAR";
   } catch (error) {
     log(`🤖 AI check failed: ${error}`);
     return "UNCLEAR";
@@ -1702,6 +1796,7 @@ async function main(): Promise<void> {
 
   const queueData = await initializeQueue();
   const todayRequests = filterTodayRequests(queueData);
+  activeQueue = { queueData, todayRequests };
 
   if (todayRequests.length === 0) {
     log("No booking requests for today");
@@ -1742,6 +1837,7 @@ async function main(): Promise<void> {
       locale: "en-CA",
     });
     const page = await context.newPage();
+    activePage = page;
 
     // Perform initial login with first request
     await setDateInSessionStorage(page, todayRequests[0].playDate);
@@ -1770,20 +1866,17 @@ async function main(): Promise<void> {
       const result = await processRequest(page, request, isFirstRequest);
       results += result.message;
       if (result.success) processedCount++;
+
+      // Persist immediately so this request's outcome survives a crash while
+      // processing later requests.
+      persistQueue(queueData, todayRequests);
     }
   } finally {
     if (browser) await browser.close();
   }
 
-  // Update queue
-  queueData.bookingRequests = queueData.bookingRequests.filter(
-    (r) => r.status === "pending"
-  );
-  queueData.processedRequests = [
-    ...todayRequests,
-    ...queueData.processedRequests,
-  ];
-  fs.writeFileSync(queueFilePath, JSON.stringify(queueData, null, 2));
+  // Final persist (no-op if the loop completed normally).
+  persistQueue(queueData, todayRequests);
 
   // Set outputs
   log(`Processed ${processedCount} requests`);
@@ -1796,6 +1889,7 @@ async function main(): Promise<void> {
 
 // Run the processor. Runs Discord notification regardless of outcome so
 // failures are still reported.
+const watchdog = startWatchdog();
 main()
   .catch((error) => {
     const errorMessage =
@@ -1809,6 +1903,7 @@ main()
     process.exitCode = 1;
   })
   .finally(async () => {
+    clearTimeout(watchdog);
     try {
       await sendDiscordNotification();
     } catch (e) {
