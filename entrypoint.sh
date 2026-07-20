@@ -19,22 +19,49 @@ git clone --depth 1 --branch "$GIT_BRANCH" \
 cp "$REPO_DIR/booking-queue.json" /app/booking-queue.json
 
 echo "[entrypoint] Running booking script..."
-IS_SCHEDULED_RUN=true npx ts-node /app/process-queue.ts
-SCRIPT_EXIT=$?
+# `|| SCRIPT_EXIT=$?` keeps `set -e` from aborting the entrypoint when the
+# script fails: the queue sync below must still run, because statuses the
+# script recorded before failing would otherwise be lost.
+SCRIPT_EXIT=0
+IS_SCHEDULED_RUN=true npx ts-node /app/process-queue.ts || SCRIPT_EXIT=$?
 
-# Always attempt to sync state back, even on script failure (the script may
-# have moved some requests to processedRequests before the failure).
+# Sync queue state back to GitHub. The frontend commits to the same branch
+# (users add/delete requests from the web UI), so a run that takes 10+ minutes
+# can race those commits and get a non-fast-forward rejection. Each attempt
+# rebuilds our commit on top of the latest remote state, merging the remote
+# queue with our post-run queue via merge-queue.js, then retries the push.
+sync_queue() {
+    cd "$REPO_DIR"
+    local attempt
+    for attempt in 1 2 3 4 5; do
+        git fetch origin "$GIT_BRANCH"
+        git reset --hard "origin/${GIT_BRANCH}"
+        node /app/merge-queue.js booking-queue.json /app/booking-queue.json \
+            > /tmp/merged-queue.json
+        cp /tmp/merged-queue.json booking-queue.json
+        git add booking-queue.json
+        if git diff --cached --quiet; then
+            echo "[entrypoint] No queue changes to push."
+            return 0
+        fi
+        git -c user.email="bot@render.local" -c user.name="Render Bot" \
+            commit -m "Update booking queue after processing"
+        if git push origin "HEAD:${GIT_BRANCH}"; then
+            echo "[entrypoint] Pushed queue update (attempt ${attempt})."
+            return 0
+        fi
+        echo "[entrypoint] Push rejected (attempt ${attempt}); retrying against latest remote..."
+        sleep $((2 * attempt))
+    done
+    echo "[entrypoint] ERROR: could not push queue update after 5 attempts."
+    return 1
+}
+
 echo "[entrypoint] Syncing queue state back to ${GITHUB_REPO}@${GIT_BRANCH}..."
-cp /app/booking-queue.json "$REPO_DIR/booking-queue.json"
-cd "$REPO_DIR"
-git add booking-queue.json
-if ! git diff --cached --quiet; then
-    git -c user.email="bot@render.local" -c user.name="Render Bot" \
-        commit -m "Update booking queue after processing"
-    git push origin "HEAD:${GIT_BRANCH}"
-    echo "[entrypoint] Pushed queue update."
-else
-    echo "[entrypoint] No queue changes to push."
-fi
+SYNC_EXIT=0
+sync_queue || SYNC_EXIT=$?
 
-exit "$SCRIPT_EXIT"
+if [ "$SCRIPT_EXIT" -ne 0 ]; then
+    exit "$SCRIPT_EXIT"
+fi
+exit "$SYNC_EXIT"
