@@ -9,7 +9,9 @@
         "end": "12:30"
       },
       "status": "pending"
-    },
+    }
+  ],
+  "processedRequests": [
     {
       "id": "2026-07-13-18875",
       "requestDate": "2026-07-13T11:39:30.983Z",
@@ -18,7 +20,9 @@
         "start": "09:00",
         "end": "10:10"
       },
-      "status": "pending"
+      "status": "success",
+      "processedDate": "2026-07-27T11:00:05.619Z",
+      "bookedTime": "09:00"
     },
     {
       "id": "2026-07-23-76221",
@@ -28,10 +32,10 @@
         "start": "12:30",
         "end": "15:00"
       },
-      "status": "pending"
-    }
-  ],
-  "processedRequests": [
+      "status": "failed",
+      "processedDate": "2026-07-27T11:00:10.008Z",
+      "failureReason": "No available times"
+    },
     {
       "id": "2026-07-08-43106",
       "requestDate": "2026-07-08T19:10:09.181Z",
