@@ -4,6 +4,11 @@ import { chromium, Page, Browser, Frame, Locator } from "@playwright/test";
 import { WriteStream } from "fs";
 import * as dotenv from "dotenv";
 import * as https from "https";
+import {
+  ApiEvaluation,
+  evaluateApiAvailability,
+  formatMinutes,
+} from "./api-availability";
 
 dotenv.config();
 
@@ -679,63 +684,66 @@ async function findAvailableSlots14Day(
   return { slots: [], updatedFrame: frame };
 }
 
-// Check API response for booking availability
-async function checkApiForAvailability(
-  timeRange: TimeRange,
-  apiResponse: any
-): Promise<"available" | "all-booked" | "not-released"> {
-  const parseTime = (timeStr: string): number => {
-    const [hour, minute] = timeStr.split(":").map(Number);
-    return hour + minute / 60;
-  };
-
-  const startNum = parseTime(timeRange.start);
-  const endNum = parseTime(timeRange.end);
-
-  const timesInRange = apiResponse.data.teeSheet.filter((slot: any) => {
-    if (!slot.teeTime) {
-      log(`Skipping slot with no teeTime: ${JSON.stringify(slot)}`);
-      return false;
-    }
-
-    const slotTime = parseTime(slot.teeTime);
-    return slotTime >= startNum && slotTime <= endNum;
-  });
-
-
-  const availableTimes = timesInRange.filter((slot: any) => slot.availPlayers === 4);
-  if (availableTimes.length > 0) {
-    log(`🟢 API check: Found ${availableTimes.length} available times in range`);
-    return "available";
+// Persist the raw API payload so a wrong verdict can be diagnosed after the fact.
+function dumpApiPayload(playDate: string, url: string, payload: any): void {
+  try {
+    const dumpPath = path.join(
+      logDir,
+      `api-teesheet-${playDate}-${Date.now()}.json`
+    );
+    fs.writeFileSync(
+      dumpPath,
+      JSON.stringify({ url, capturedAt: new Date().toISOString(), payload }, null, 2)
+    );
+    log(`📄 Raw tee sheet payload written to ${dumpPath}`);
+  } catch (error) {
+    log(`Could not write API payload dump: ${error}`);
   }
-
-  const timesIn3DayRelease = apiResponse.data.teeSheet.filter((slot: any) => {
-    if (!slot.teeTime) {
-      log(`Skipping slot with no teeTime: ${JSON.stringify(slot)}`);
-      return false;
-    }
-
-    const slotTime = parseTime(slot.teeTime);
-    // Check if slot is in the 1-day release window (9:30-11:20)
-    return slotTime >= 9.5 && slotTime <= (11 + 20/60);
-  });
-
-  if (timesInRange.length === 0 || timesIn3DayRelease.length === 0) {
-    log(`🔍 API check: No times in range ${timeRange.start}-${timeRange.end} or no 1-day release times (9:30-11:20) found in API response`);
-    return "not-released";
-  }
-
-  const allBooked = timesInRange.every((slot: any) => slot.availPlayers === 0);
-  if (allBooked) {
-    log(`🔴 API check: All times in range are fully booked (availPlayers: 0)`);
-    return "all-booked";
-  }
-
-  log(`🟡 API check: Times exist but partial availability (not worth booking)`);
-  return "all-booked"; // Treat partial availability as not worth continuing
 }
 
-type APIResult = "available" | "all-booked" | "not-released" | "timeout" 
+// Check API response for booking availability
+function checkApiForAvailability(
+  timeRange: TimeRange,
+  apiResponse: any
+): ApiEvaluation {
+  const evaluation = evaluateApiAvailability(timeRange, apiResponse);
+
+  // Log one raw slot verbatim: log files on the host are ephemeral, so stdout has
+  // to carry enough to reconstruct what the API actually said.
+  const firstSlot = apiResponse?.data?.teeSheet?.[0];
+  if (firstSlot) {
+    log(`   Raw first slot: ${JSON.stringify(firstSlot).slice(0, 500)}`);
+  }
+
+  for (const line of evaluation.diagnostics) {
+    log(`   ${line}`);
+  }
+
+  // Always show the rows either side of the range - if the range check is wrong,
+  // this is what tells us so.
+  const neighbours = evaluation.slots
+    .filter((s) => s.minutes !== null && !evaluation.inRange.includes(s))
+    .slice(0, 40)
+    .map((s) => `${formatMinutes(s.minutes)}=${s.availPlayers ?? "?"}`);
+  if (neighbours.length > 0) {
+    log(`   Other slots on the sheet: ${neighbours.join(" ")}`);
+  }
+
+  const icons: Record<ApiEvaluation["verdict"], string> = {
+    available: "🟢",
+    "all-booked": "🔴",
+    partial: "🟡",
+    "not-released": "🔍",
+    unknown: "❔",
+  };
+  log(
+    `${icons[evaluation.verdict]} API check: ${evaluation.verdict} (${evaluation.reason}) for ${timeRange.start}-${timeRange.end}`
+  );
+
+  return evaluation;
+}
+
+type APIResult = ApiEvaluation["verdict"] | "timeout";
 
 // Navigate and capture API response during loading
 async function navigateAndCaptureApiResponse(
@@ -748,20 +756,32 @@ async function navigateAndCaptureApiResponse(
 }> {
   let apiResult: APIResult = "timeout";
   const API_TIMEOUT_MS = 8000;
-  
+  const seenTeeTimeUrls: string[] = [];
+
   // Set up API response capture BEFORE navigation
   const responsePromise = new Promise<void>((resolve) => {
-    const timeout = setTimeout(resolve, API_TIMEOUT_MS);
+    const timeout = setTimeout(() => {
+      page.off("response", responseHandler);
+      resolve();
+    }, API_TIMEOUT_MS);
 
     const responseHandler = async (response: any) => {
       const url = response.url();
-      if (url.includes('/api/v1/teetimes/GetAvailableTeeTimes/') && 
+      if (!url.toLowerCase().includes("teetimes")) return;
+      seenTeeTimeUrls.push(url);
+
+      if (url.includes('/api/v1/teetimes/GetAvailableTeeTimes/') &&
           url.includes(playDate.replace(/-/g, ''))) {
         try {
           const responseData = await response.json();
-          apiResult = await checkApiForAvailability(timeRange, responseData);
+          log(`📡 Captured tee sheet API response: ${url}`);
+          if (process.env.DUMP_API_PAYLOAD !== "false") {
+            dumpApiPayload(playDate, url, responseData);
+          }
+          apiResult = checkApiForAvailability(timeRange, responseData).verdict;
         } catch (error) {
           log(`Failed to parse API response: ${error}`);
+          apiResult = "unknown";
         } finally {
           clearTimeout(timeout);
           page.off('response', responseHandler);
@@ -776,12 +796,21 @@ async function navigateAndCaptureApiResponse(
   // Navigate to trigger the API call
   await navigateToBookingPage(page, playDate);
   const frame = await getBookingFrame(page);
-  
+
   // Wait for both page load AND API response
   await Promise.all([
     waitForDateDataToLoad(frame),
     responsePromise
   ]);
+
+  if (apiResult === "timeout") {
+    log(
+      `⏱️ No matching tee sheet API response for ${playDate} within ${API_TIMEOUT_MS}ms.` +
+        (seenTeeTimeUrls.length
+          ? ` Tee-time URLs seen: ${seenTeeTimeUrls.slice(0, 5).join(" | ")}`
+          : ` No tee-time URLs seen at all.`)
+    );
+  }
 
   return { frame, apiResult };
 }
@@ -792,7 +821,11 @@ async function findAvailableSlots1Day(
   timeRange: TimeRange,
   playDate: string,
   maxRetries = 30
-): Promise<{ slots: Array<Slot>; updatedFrame: Frame | null }> {
+): Promise<{
+  slots: Array<Slot>;
+  updatedFrame: Frame | null;
+  lastApiResult: APIResult;
+}> {
   let currentFrame: Frame | null = null;
   let currentApiResult: APIResult = "timeout";
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -801,26 +834,40 @@ async function findAvailableSlots1Day(
     currentFrame = frame;
     currentApiResult = apiResult;
     await waitForDateDataToLoad(currentFrame);
-    
-    if (currentApiResult === "all-booked") {
-      log(`🛑 API confirms all times in range are booked - stopping retries`);
-      return { slots: [], updatedFrame: currentFrame };
-    } 
-    
+
+    // The API verdict decides whether to keep retrying - never whether to look.
+    // The DOM is the source of truth for what is bookable right now.
+    const apiSaysStop =
+      currentApiResult === "all-booked" || currentApiResult === "partial";
+
     if (currentApiResult === "available") {
       log(`🟢 API shows available times`);
-    } 
-    
-    if (currentApiResult === "timeout") {
-      log(`⏱️ API response timeout - continuing with DOM-based checks`);
     }
-    
+
+    if (currentApiResult === "timeout" || currentApiResult === "unknown") {
+      log(`⏱️ API verdict unusable (${currentApiResult}) - relying on DOM checks`);
+    }
+
     const pageState = await checkPageState(currentFrame, playDate);
 
     if (pageState === "ready") {
       const slots = await findAvailableSlots(currentFrame, timeRange);
       if (slots.length > 0) {
-        return { slots, updatedFrame: currentFrame };
+        if (apiSaysStop) {
+          log(
+            `⚠️ API/DOM disagreement: API said "${currentApiResult}" but the tee sheet shows ${slots.length} bookable slot(s) (${slots
+              .map((s) => s.time)
+              .join(", ")}). Trusting the DOM and booking.`
+          );
+        }
+        return { slots, updatedFrame: currentFrame, lastApiResult: currentApiResult };
+      }
+
+      if (apiSaysStop) {
+        log(
+          `🛑 API (${currentApiResult}) and tee sheet agree there is nothing bookable in range - stopping retries`
+        );
+        return { slots: [], updatedFrame: currentFrame, lastApiResult: currentApiResult };
       }
 
       // For 1-day bookings, retry more aggressively as slots may become available gradually
@@ -861,7 +908,7 @@ async function findAvailableSlots1Day(
   }
 
   log(`Unable to find slots after ${maxRetries} attempts`);
-  return { slots: [], updatedFrame: currentFrame };
+  return { slots: [], updatedFrame: currentFrame, lastApiResult: currentApiResult };
 }
 
 // Find available slots
@@ -1599,7 +1646,7 @@ async function process1DayRequest(
 ): Promise<{ message: string; success: boolean }> {
   try {
     // For 1-day bookings, use aggressive retry logic with full page refreshes
-    const { slots, updatedFrame } = await findAvailableSlots1Day(
+    const { slots, updatedFrame, lastApiResult } = await findAvailableSlots1Day(
       page,
       request.timeRange,
       request.playDate
@@ -1614,11 +1661,11 @@ async function process1DayRequest(
       }
       request.status = "failed";
       request.processedDate = new Date().toISOString();
-      request.failureReason = "No available times";
+      request.failureReason = `No available times (API verdict: ${lastApiResult})`;
       return {
         message: `❌ Request for ${
           request.playDate
-        }: No available times at ${getCurrentTimeET()}\n`,
+        }: No available times [API: ${lastApiResult}] at ${getCurrentTimeET()}\n`,
         success: false,
       };
     }
