@@ -16,7 +16,11 @@ RUN npm ci
 # pins a different minor).
 RUN npx playwright install chromium
 
-COPY tsconfig.json process-queue.ts entrypoint.sh ./
+# Copy every source module, not just the entrypoint script: process-queue.ts
+# imports sibling modules (e.g. ./api-availability), and listing files one by
+# one means a new module silently breaks the image at runtime. Test files come
+# along too but are never loaded - ts-node only compiles what is required.
+COPY tsconfig.json *.ts entrypoint.sh ./
 RUN chmod +x entrypoint.sh
 
 CMD ["./entrypoint.sh"]

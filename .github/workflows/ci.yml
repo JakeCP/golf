@@ -15,4 +15,9 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       - run: npx tsc --noEmit
+      # Includes the Docker packaging check: a typecheck passes on the working
+      # tree even when the image ships an incomplete set of sources.
+      - run: npm run test:run
