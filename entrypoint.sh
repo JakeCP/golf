@@ -19,8 +19,12 @@ git clone --depth 1 --branch "$GIT_BRANCH" \
 cp "$REPO_DIR/booking-queue.json" /app/booking-queue.json
 
 echo "[entrypoint] Running booking script..."
+# `set -e` would abort here on a non-zero exit and skip the sync-back below,
+# so the failure has to be captured explicitly.
+set +e
 IS_SCHEDULED_RUN=true npx ts-node /app/process-queue.ts
 SCRIPT_EXIT=$?
+set -e
 
 # Always attempt to sync state back, even on script failure (the script may
 # have moved some requests to processedRequests before the failure).
