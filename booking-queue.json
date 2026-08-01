@@ -1,16 +1,6 @@
 {
   "bookingRequests": [
     {
-      "id": "2026-07-29-6254",
-      "requestDate": "2026-07-29T01:32:54.238Z",
-      "playDate": "2026-08-15",
-      "timeRange": {
-        "start": "09:00",
-        "end": "10:00"
-      },
-      "status": "pending"
-    },
-    {
       "id": "2026-07-29-33088",
       "requestDate": "2026-07-29T12:38:16.286Z",
       "playDate": "2026-08-17",
@@ -32,6 +22,18 @@
     }
   ],
   "processedRequests": [
+    {
+      "id": "2026-07-29-6254",
+      "requestDate": "2026-07-29T01:32:54.238Z",
+      "playDate": "2026-08-15",
+      "timeRange": {
+        "start": "09:00",
+        "end": "10:00"
+      },
+      "status": "success",
+      "processedDate": "2026-08-01T11:00:06.084Z",
+      "bookedTime": "09:00"
+    },
     {
       "id": "2026-07-13-99386",
       "requestDate": "2026-07-13T11:38:28.886Z",
