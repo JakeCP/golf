@@ -1,5 +1,16 @@
 {
-  "bookingRequests": [],
+  "bookingRequests": [
+    {
+      "id": "2026-08-07-87646",
+      "requestDate": "2026-08-07T11:05:33.688Z",
+      "playDate": "2026-08-21",
+      "timeRange": {
+        "start": "09:00",
+        "end": "10:00"
+      },
+      "status": "pending"
+    }
+  ],
   "processedRequests": [
     {
       "id": "2026-07-29-41896",
