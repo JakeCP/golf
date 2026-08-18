@@ -1,5 +1,6 @@
 {
-  "bookingRequests": [
+  "bookingRequests": [],
+  "processedRequests": [
     {
       "id": "2026-08-07-60555",
       "requestDate": "2026-08-07T11:12:27.995Z",
@@ -8,10 +9,10 @@
         "start": "09:10",
         "end": "10:00"
       },
-      "status": "pending"
-    }
-  ],
-  "processedRequests": [
+      "status": "error",
+      "processedDate": "2026-08-18T11:00:30.005Z",
+      "failureReason": "locator.elementHandle: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator('iframe#module')\n"
+    },
     {
       "id": "2026-08-07-93773",
       "requestDate": "2026-08-07T11:08:51.964Z",
