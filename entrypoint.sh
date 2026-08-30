@@ -36,7 +36,8 @@ echo "[entrypoint] Running booking script..."
 # `set -e` would abort here on a non-zero exit and skip the sync-back below,
 # so the failure has to be captured explicitly.
 set +e
-IS_SCHEDULED_RUN=true npx ts-node "$APP_DIR/process-queue.ts"
+cd "$APP_DIR"
+IS_SCHEDULED_RUN=true ./node_modules/.bin/ts-node process-queue.ts
 SCRIPT_EXIT=$?
 set -e
 
