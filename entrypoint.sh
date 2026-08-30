@@ -4,32 +4,46 @@
 # repo stays the source of truth (same UX as the prior auto-commit Action).
 set -euo pipefail
 
-: "${GITHUB_PUSH_TOKEN:?GITHUB_PUSH_TOKEN is required (PAT with repo write scope)}"
 : "${GITHUB_REPO:?GITHUB_REPO is required, e.g. JakeCP/golf}"
 GIT_BRANCH="${GIT_BRANCH:-main}"
+APP_DIR="${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+
+# The booking worker was migrated from Render to the Mac Mini. Render exposes
+# RENDER=true to all of its services, so an old cron resource can safely remain
+# provisioned without racing the Mini and attempting the same booking twice.
+if [[ "${RENDER:-}" == "true" && "${ALLOW_RENDER_BOOKING:-}" != "true" ]]; then
+    echo "[entrypoint] Render runner is disabled; the Mac Mini is authoritative."
+    exit 0
+fi
 
 REPO_DIR="$(mktemp -d)"
 trap 'rm -rf "$REPO_DIR"' EXIT
 
 echo "[entrypoint] Cloning ${GITHUB_REPO}@${GIT_BRANCH} for queue state..."
-git clone --depth 1 --branch "$GIT_BRANCH" \
-    "https://x-access-token:${GITHUB_PUSH_TOKEN}@github.com/${GITHUB_REPO}.git" \
-    "$REPO_DIR"
+if [[ -n "${GITHUB_PUSH_TOKEN:-}" ]]; then
+    CLONE_URL="https://x-access-token:${GITHUB_PUSH_TOKEN}@github.com/${GITHUB_REPO}.git"
+else
+    # Native hosts can use a private git credential helper instead of putting a
+    # token in the process environment. The repository is public for cloning;
+    # the helper is consulted when the queue update is pushed.
+    CLONE_URL="https://github.com/${GITHUB_REPO}.git"
+fi
+git clone --depth 1 --branch "$GIT_BRANCH" "$CLONE_URL" "$REPO_DIR"
 
-cp "$REPO_DIR/booking-queue.json" /app/booking-queue.json
+cp "$REPO_DIR/booking-queue.json" "$APP_DIR/booking-queue.json"
 
 echo "[entrypoint] Running booking script..."
 # `set -e` would abort here on a non-zero exit and skip the sync-back below,
 # so the failure has to be captured explicitly.
 set +e
-IS_SCHEDULED_RUN=true npx ts-node /app/process-queue.ts
+IS_SCHEDULED_RUN=true npx ts-node "$APP_DIR/process-queue.ts"
 SCRIPT_EXIT=$?
 set -e
 
 # Always attempt to sync state back, even on script failure (the script may
 # have moved some requests to processedRequests before the failure).
 echo "[entrypoint] Syncing queue state back to ${GITHUB_REPO}@${GIT_BRANCH}..."
-cp /app/booking-queue.json "$REPO_DIR/booking-queue.json"
+cp "$APP_DIR/booking-queue.json" "$REPO_DIR/booking-queue.json"
 cd "$REPO_DIR"
 git add booking-queue.json
 if ! git diff --cached --quiet; then
