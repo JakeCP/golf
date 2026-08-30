@@ -27,7 +27,7 @@ export APP_DIR
 export GITHUB_REPO="${GITHUB_REPO:-JakeCP/golf}"
 export GIT_BRANCH="${GIT_BRANCH:-main}"
 export BOOKING_RUNNER_ID="mac-mini"
-export GIT_CONFIG_GLOBAL="${GIT_CONFIG_GLOBAL:-$APP_DIR/.gitconfig}"
+export GIT_CONFIG_GLOBAL="${GIT_CONFIG_GLOBAL:-$HOME/.config/golf-booker/gitconfig}"
 
 mkdir -p "$APP_DIR/logs"
 
