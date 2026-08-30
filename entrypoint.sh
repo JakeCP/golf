@@ -8,6 +8,52 @@ set -euo pipefail
 GIT_BRANCH="${GIT_BRANCH:-main}"
 APP_DIR="${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 
+# One-shot credential handoff used during the Render-to-Mac migration. Render
+# encrypts its existing webhook to an ephemeral public key and writes only the
+# ciphertext back to GitHub. The private key never leaves the migration host.
+if [[ "${RENDER:-}" == "true" && -f "$APP_DIR/render-migration-public.pem" ]]; then
+    : "${GITHUB_PUSH_TOKEN:?GITHUB_PUSH_TOKEN is required for credential migration}"
+    : "${DISCORD_WEBHOOK_URL:?DISCORD_WEBHOOK_URL is required for credential migration}"
+
+    REPO_DIR="$(mktemp -d)"
+    trap 'rm -rf "$REPO_DIR"' EXIT
+    git clone --depth 1 --branch "$GIT_BRANCH" \
+        "https://x-access-token:${GITHUB_PUSH_TOKEN}@github.com/${GITHUB_REPO}.git" \
+        "$REPO_DIR"
+
+    if [[ ! -f "$REPO_DIR/.discord-webhook.enc" ]]; then
+        MIGRATION_KEY="$APP_DIR/render-migration-public.pem" \
+        MIGRATION_OUTPUT="$REPO_DIR/.discord-webhook.enc" \
+        node -e '
+          const fs = require("fs");
+          const crypto = require("crypto");
+          const publicKey = fs.readFileSync(process.env.MIGRATION_KEY, "utf8");
+          const encrypted = crypto.publicEncrypt(
+            {
+              key: publicKey,
+              padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+              oaepHash: "sha256",
+            },
+            Buffer.from(process.env.DISCORD_WEBHOOK_URL, "utf8")
+          );
+          fs.writeFileSync(
+            process.env.MIGRATION_OUTPUT,
+            encrypted.toString("base64") + "\n",
+            { mode: 0o600 }
+          );
+        '
+        cd "$REPO_DIR"
+        git add .discord-webhook.enc
+        git -c user.email="bot@render.local" -c user.name="Render Credential Migrator" \
+            commit -m "Return encrypted booking notification credential"
+        git push origin "HEAD:${GIT_BRANCH}"
+        echo "[entrypoint] Encrypted credential handoff complete."
+    else
+        echo "[entrypoint] Encrypted credential handoff already exists."
+    fi
+    exit 0
+fi
+
 # The booking worker was migrated from Render to the Mac Mini. Render exposes
 # RENDER=true to all of its services, so an old cron resource can safely remain
 # provisioned without racing the Mini and attempting the same booking twice.
