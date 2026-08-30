@@ -22,6 +22,7 @@ fi
 # DATE_OVERRIDE is useful for local debugging but must never leak into a real
 # scheduled run. The queue's release dates must be evaluated against today.
 unset DATE_OVERRIDE TEST_MODE SIMULATE_BOOKING
+export HEADLESS=true
 
 export APP_DIR
 export GITHUB_REPO="${GITHUB_REPO:-JakeCP/golf}"

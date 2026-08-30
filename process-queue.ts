@@ -192,7 +192,12 @@ async function sendDiscordNotification(): Promise<void> {
 
 // Date helpers
 const getTodayDate = (): string => {
-  if (process.env.DATE_OVERRIDE) {
+  // DATE_OVERRIDE is a local debugging aid. A stale value in a copied .env
+  // must never make a real cron run process the wrong day's requests.
+  if (
+    process.env.DATE_OVERRIDE &&
+    process.env.IS_SCHEDULED_RUN !== "true"
+  ) {
     log(`Using date override: ${process.env.DATE_OVERRIDE}`);
     return process.env.DATE_OVERRIDE;
   }
