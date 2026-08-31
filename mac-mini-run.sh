@@ -23,6 +23,7 @@ fi
 # scheduled run. The queue's release dates must be evaluated against today.
 unset DATE_OVERRIDE TEST_MODE SIMULATE_BOOKING
 export HEADLESS=true
+export PLAYWRIGHT_EXECUTABLE_PATH="${PLAYWRIGHT_EXECUTABLE_PATH:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 
 export APP_DIR
 export GITHUB_REPO="${GITHUB_REPO:-JakeCP/golf}"

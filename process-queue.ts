@@ -1784,7 +1784,11 @@ async function main(): Promise<void> {
 
   try {
     // Create browser and page once
-    browser = await chromium.launch({ headless });
+    const executablePath = process.env.PLAYWRIGHT_EXECUTABLE_PATH;
+    browser = await chromium.launch({
+      headless,
+      ...(executablePath ? { executablePath } : {}),
+    });
     const context = await browser.newContext({
       // Tall viewport so modal controls rendered low in the booking iframe
       // (e.g. the lock modal's CLOSE link) stay clickable.
