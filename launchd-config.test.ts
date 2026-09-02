@@ -15,8 +15,14 @@ describe("Mac Mini LaunchAgent configuration", () => {
     expect(plist).toMatch(/<key>Minute<\/key>\s*<integer>50<\/integer>/);
   });
 
-  it("sets the cron-equivalent working directory and base environment", () => {
+  it("sets the working directory and base environment", () => {
     expect(plist).toContain("/Users/golfbot/golf-booker</string>");
     expect(plist).toContain("/usr/bin:/bin:/usr/sbin:/sbin");
+  });
+
+  it("can load in both SSH background and desktop sessions", () => {
+    expect(plist).toMatch(
+      /<key>LimitLoadToSessionType<\/key>[\s\S]*?<string>Background<\/string>[\s\S]*?<string>Aqua<\/string>/
+    );
   });
 });

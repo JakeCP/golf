@@ -21,6 +21,12 @@
         <string>/usr/bin:/bin:/usr/sbin:/sbin</string>
     </dict>
 
+    <key>LimitLoadToSessionType</key>
+    <array>
+        <string>Background</string>
+        <string>Aqua</string>
+    </array>
+
     <key>StartCalendarInterval</key>
     <dict>
         <key>Hour</key>
