@@ -9,7 +9,10 @@ import {
   evaluateApiAvailability,
   formatMinutes,
 } from "./api-availability";
-import { selectRunScreenshots } from "./notification-attachments";
+import {
+  selectRunScreenshots,
+  truncateDiscordContent,
+} from "./notification-attachments";
 
 dotenv.config();
 
@@ -103,12 +106,14 @@ async function sendDiscordNotification(): Promise<void> {
     return;
   }
 
-  const content = [
-    `**Booking run:** ${runSummary.status}`,
-    `Requests processed: ${runSummary.processedCount}`,
-    `---`,
-    runSummary.results || "(no detail)",
-  ].join("\n");
+  const content = truncateDiscordContent(
+    [
+      `**Booking run:** ${runSummary.status}`,
+      `Requests processed: ${runSummary.processedCount}`,
+      `---`,
+      runSummary.results || "(no detail)",
+    ].join("\n")
+  );
 
   // Discord webhooks accept up to 10 attachments. Only attach screenshots
   // created during this run; logs/ also contains artifacts from previous days.

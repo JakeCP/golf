@@ -5,7 +5,7 @@ set -euo pipefail
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOCK_DIR="$APP_DIR/.run-lock"
 
-# cron starts with a minimal PATH and does not load the account's nvm setup.
+# launchd starts with a minimal PATH and does not load the account's nvm setup.
 export NVM_DIR="$HOME/.nvm"
 if [[ -s "$NVM_DIR/nvm.sh" ]]; then
     # shellcheck source=/dev/null
@@ -33,7 +33,7 @@ export GIT_CONFIG_GLOBAL="${GIT_CONFIG_GLOBAL:-$HOME/.config/golf-booker/gitconf
 
 mkdir -p "$APP_DIR/logs"
 
-# Prevent a manual run from overlapping cron. Recover automatically from a
+# Prevent a manual run from overlapping the scheduler. Recover automatically from a
 # stale PID left behind if the machine or process stopped unexpectedly.
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
     LOCK_PID="$(sed -n '1p' "$LOCK_DIR/pid" 2>/dev/null || true)"

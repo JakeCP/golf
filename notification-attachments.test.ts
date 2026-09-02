@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { selectRunScreenshots } from "./notification-attachments";
+import {
+  selectRunScreenshots,
+  truncateDiscordContent,
+} from "./notification-attachments";
 
 describe("Discord screenshot selection", () => {
   const runStartedAtMs = 10_000;
@@ -44,5 +47,20 @@ describe("Discord screenshot selection", () => {
 
     expect(selected).toHaveLength(10);
     expect(selected[0].name).toBe("current-11.png");
+  });
+});
+
+describe("Discord message length", () => {
+  it("leaves normal messages unchanged", () => {
+    expect(truncateDiscordContent("No booking requests for today.")).toBe(
+      "No booking requests for today."
+    );
+  });
+
+  it("caps long browser errors at Discord's 2,000-character limit", () => {
+    const result = truncateDiscordContent("x".repeat(3_000));
+
+    expect(result).toHaveLength(2_000);
+    expect(result).toContain("Details truncated");
   });
 });
