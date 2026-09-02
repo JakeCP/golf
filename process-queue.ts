@@ -9,6 +9,7 @@ import {
   evaluateApiAvailability,
   formatMinutes,
 } from "./api-availability";
+import { selectRunScreenshots } from "./notification-attachments";
 
 dotenv.config();
 
@@ -52,6 +53,7 @@ const takeScreenshots = process.env.TAKE_SCREENSHOTS !== "false";
 const queueFilePath = path.join(__dirname, "booking-queue.json");
 
 // Logging setup
+const runStartedAtMs = Date.now();
 const logDir = path.join(__dirname, "logs");
 if (!fs.existsSync(logDir)) {
   fs.mkdirSync(logDir);
@@ -108,20 +110,18 @@ async function sendDiscordNotification(): Promise<void> {
     runSummary.results || "(no detail)",
   ].join("\n");
 
-  // Discord webhooks accept up to 10 attachments. Pull the most recent PNGs
-  // out of logs/ — these are screenshots written during this run by the
-  // various failure-path captures in process14DayRequest / process1DayRequest.
+  // Discord webhooks accept up to 10 attachments. Only attach screenshots
+  // created during this run; logs/ also contains artifacts from previous days.
   let attachments: { path: string; name: string }[] = [];
   try {
     if (fs.existsSync(logDir)) {
-      attachments = fs
-        .readdirSync(logDir)
-        .filter((f) => f.endsWith(".png"))
-        .map((f) => path.join(logDir, f))
-        .map((p) => ({ p, mtime: fs.statSync(p).mtimeMs }))
-        .sort((a, b) => b.mtime - a.mtime)
-        .slice(0, 10)
-        .map(({ p }) => ({ path: p, name: path.basename(p) }));
+      const candidates = fs.readdirSync(logDir).map((name) => ({
+        name,
+        mtimeMs: fs.statSync(path.join(logDir, name)).mtimeMs,
+      }));
+      attachments = selectRunScreenshots(candidates, runStartedAtMs).map(
+        ({ name }) => ({ path: path.join(logDir, name), name })
+      );
     }
   } catch (e) {
     log(`Could not enumerate screenshots: ${e}`);
