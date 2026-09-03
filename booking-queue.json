@@ -29,6 +29,20 @@
         "end": "10:00"
       },
       "status": "pending"
+    }
+  ],
+  "processedRequests": [
+    {
+      "id": "2026-09-03-1631",
+      "requestDate": "2026-09-03T02:11:32.969Z",
+      "playDate": "2026-09-17",
+      "timeRange": {
+        "start": "09:00",
+        "end": "10:00"
+      },
+      "status": "failed",
+      "processedDate": "2026-09-03T11:00:25.853Z",
+      "failureReason": "No available times"
     },
     {
       "id": "2026-09-03-48539",
@@ -38,20 +52,10 @@
         "start": "17:00",
         "end": "18:00"
       },
-      "status": "pending"
+      "status": "success",
+      "processedDate": "2026-09-03T11:00:33.191Z",
+      "bookedTime": "18:00"
     },
-    {
-      "id": "2026-09-03-1631",
-      "requestDate": "2026-09-03T02:11:32.969Z",
-      "playDate": "2026-09-17",
-      "timeRange": {
-        "start": "09:00",
-        "end": "10:00"
-      },
-      "status": "pending"
-    }
-  ],
-  "processedRequests": [
     {
       "id": "2026-08-31-21994",
       "requestDate": "2026-08-31T13:25:03.147Z",
