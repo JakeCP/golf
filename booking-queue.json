@@ -1,16 +1,6 @@
 {
   "bookingRequests": [
     {
-      "id": "2026-09-02-77527",
-      "requestDate": "2026-09-02T11:36:59.535Z",
-      "playDate": "2026-09-21",
-      "timeRange": {
-        "start": "09:00",
-        "end": "10:00"
-      },
-      "status": "pending"
-    },
-    {
       "id": "2026-09-02-34581",
       "requestDate": "2026-09-02T11:37:14.197Z",
       "playDate": "2026-09-22",
@@ -19,6 +9,20 @@
         "end": "10:00"
       },
       "status": "pending"
+    }
+  ],
+  "processedRequests": [
+    {
+      "id": "2026-09-02-77527",
+      "requestDate": "2026-09-02T11:36:59.535Z",
+      "playDate": "2026-09-21",
+      "timeRange": {
+        "start": "09:00",
+        "end": "10:00"
+      },
+      "status": "success",
+      "processedDate": "2026-09-07T11:00:05.853Z",
+      "bookedTime": "09:00"
     },
     {
       "id": "2026-09-05-56688",
@@ -28,10 +32,10 @@
         "start": "13:20",
         "end": "16:00"
       },
-      "status": "pending"
-    }
-  ],
-  "processedRequests": [
+      "status": "failed",
+      "processedDate": "2026-09-07T11:00:09.214Z",
+      "failureReason": "No available times (API verdict: partial)"
+    },
     {
       "id": "2026-09-03-75773",
       "requestDate": "2026-09-03T23:53:49.437Z",
