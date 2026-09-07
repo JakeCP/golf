@@ -1,16 +1,5 @@
 {
-  "bookingRequests": [
-    {
-      "id": "2026-09-02-34581",
-      "requestDate": "2026-09-02T11:37:14.197Z",
-      "playDate": "2026-09-22",
-      "timeRange": {
-        "start": "09:00",
-        "end": "10:00"
-      },
-      "status": "pending"
-    }
-  ],
+  "bookingRequests": [],
   "processedRequests": [
     {
       "id": "2026-09-02-77527",
