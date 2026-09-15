@@ -1,5 +1,6 @@
 {
-  "bookingRequests": [
+  "bookingRequests": [],
+  "processedRequests": [
     {
       "id": "2026-09-07-68234",
       "requestDate": "2026-09-07T11:22:08.418Z",
@@ -8,10 +9,10 @@
         "start": "09:20",
         "end": "10:20"
       },
-      "status": "pending"
-    }
-  ],
-  "processedRequests": [
+      "status": "success",
+      "processedDate": "2026-09-15T11:00:06.797Z",
+      "bookedTime": "09:20"
+    },
     {
       "id": "2026-09-07-53418",
       "requestDate": "2026-09-07T11:21:46.356Z",
